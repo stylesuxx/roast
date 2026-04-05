@@ -51,6 +51,8 @@ log()  { echo -e "${GREEN}[✓]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 err()  { echo -e "${RED}[✗]${NC} $*" >&2; }
 step() { echo -e "\n${BOLD}=== $* ===${NC}"; }
+# Read from terminal even when script is piped via stdin
+ask()  { read -rp "$1" "$2" </dev/tty; }
 
 # --- Preflight checks ---
 if [[ $EUID -ne 0 ]]; then
@@ -65,7 +67,7 @@ fi
 
 if ! grep -qi 'trixie\|sid' /etc/os-release 2>/dev/null; then
     warn "This script targets Debian Trixie. Detected: $(. /etc/os-release && echo "$PRETTY_NAME")"
-    read -rp "Continue anyway? [y/N] " ans
+    ask "Continue anyway? [y/N] " ans
     [[ "$ans" =~ ^[Yy]$ ]] || exit 1
 fi
 
@@ -156,7 +158,7 @@ if $NEED_KERNEL; then
         warn "Kernel was installed previously but amdgpu not detected."
         warn "You may need to reboot. Run this script again after reboot."
         echo ""
-        read -rp "Reboot now? [Y/n] " ans
+        ask "Reboot now? [Y/n] " ans
         [[ "$ans" =~ ^[Nn]$ ]] || { log "Rebooting..."; reboot; }
         exit 0
     fi
@@ -258,7 +260,7 @@ if $NEED_KERNEL; then
     warn "A reboot is required for the new kernel to take effect."
     warn "After reboot, run this script again to build llama.cpp."
     echo ""
-    read -rp "Reboot now? [Y/n] " ans
+    ask "Reboot now? [Y/n] " ans
     [[ "$ans" =~ ^[Nn]$ ]] || { log "Rebooting..."; reboot; }
     exit 0
 else
@@ -389,7 +391,7 @@ step "Step 8: Build llama.cpp with Vulkan backend"
 
 if [[ -x "$LLAMA_DIR/build/bin/llama-server" ]]; then
     log "llama-server already built at $LLAMA_DIR/build/bin/llama-server"
-    read -rp "Rebuild? [y/N] " ans
+    ask "Rebuild? [y/N] " ans
     if [[ ! "$ans" =~ ^[Yy]$ ]]; then
         log "Skipping llama.cpp build."
         SKIP_LLAMA_BUILD=true
@@ -460,7 +462,7 @@ fi
 # =====================================================================
 step "Step 10: Open WebUI setup (optional)"
 
-read -rp "Install Open WebUI via Docker? [y/N] " ans
+ask "Install Open WebUI via Docker? [y/N] " ans
 if [[ "$ans" =~ ^[Yy]$ ]]; then
     if ! command -v docker &>/dev/null; then
         log "Installing Docker..."
@@ -518,7 +520,7 @@ MODEL_URLS=(
     "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
 )
 
-read -rp "Choose [1-5]: " model_choice
+ask "Choose [1-5]: " model_choice
 case "$model_choice" in
     [1-4])
         MODEL_URL="${MODEL_URLS[$((model_choice - 1))]}"

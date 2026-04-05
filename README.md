@@ -8,10 +8,11 @@ Run llama.cpp with Vulkan GPU inference on a Raspberry Pi 5 with an AMD Radeon G
 Flash [Raspberry Pi OS Trixie Lite (64-bit)](https://www.raspberrypi.com/software/) to your SD card, boot, and run:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/stylesuxx/roast/main/roast-setup.sh | sudo bash
+wget https://raw.githubusercontent.com/stylesuxx/roast/master/roast-setup.sh
+sudo bash roast-setup.sh
 ```
 
-The script is idempotent - a reboot is required after kernel installation. Re-run the same command after reboot to complete the setup.
+A reboot is required after kernel installation. Re-run `sudo bash roast-setup.sh` after reboot to complete the setup.
 
 ## What to Expect
 
