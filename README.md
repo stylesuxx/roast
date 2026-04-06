@@ -92,6 +92,39 @@ sudo roast update            # Update R.O.A.S.T. to the latest version
 nvtop    # included in the setup
 ```
 
+## Next Steps
+
+Once R.O.A.S.T. is running, you have an OpenAI-compatible API at `http://<hostname>:8080/v1`. Here are some tools that can use it:
+
+### Coding Assistants
+
+- **[aider](https://github.com/paul-gauthier/aider)** - CLI coding agent that can edit files, run commands, and work with git. Great for pair programming from the terminal.
+  ```bash
+  pip install aider-chat
+  aider --openai-api-base http://ai01:8080/v1 --openai-api-key unused \
+        --model openai/qwen2.5-coder-7b-instruct-q4_k_m.gguf --no-auto-commits
+  ```
+
+- **[Continue](https://continue.dev)** - VS Code / JetBrains extension for code completion and chat. Point it at your local API for a self-hosted Copilot alternative.
+
+- **[Open Interpreter](https://github.com/OpenInterpreter/open-interpreter)** - CLI agent that can run code, manage files, and control your computer via natural language.
+  ```bash
+  pip install open-interpreter
+  interpreter --api-base http://ai01:8080/v1 --model qwen2.5-coder-7b-instruct-q4_k_m.gguf
+  ```
+
+### Chat and Knowledge
+
+- **[Open WebUI](https://github.com/open-webui/open-webui)** - Web-based chat interface (included in the setup script). Supports RAG, document upload, and multi-user access.
+
+- **[LibreChat](https://github.com/danny-avila/LibreChat)** - Another web chat interface with plugin support and conversation branching.
+
+### Automation
+
+- **[n8n](https://github.com/n8n-io/n8n)** - Workflow automation platform. Connect your local LLM to email, Slack, databases, and other services.
+
+- **[LiteLLM](https://github.com/BerriAI/litellm)** - API proxy that lets you expose your local model as if it were any provider (Anthropic, OpenAI, etc). Useful for tools that don't support custom endpoints directly.
+
 ## References
 
 - [Coreforge Linux](https://github.com/Coreforge/linux) - GPU-enabled RPi kernel fork
