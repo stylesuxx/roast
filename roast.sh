@@ -247,10 +247,15 @@ cmd_add() {
 [Unit]
 Description=R.O.A.S.T. llama-server - ${model_name}
 After=network.target
+# Wait for GPU to be fully initialized before starting
+ConditionPathExists=/dev/dri/renderD128
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=$REAL_USER
+ExecStartPre=/bin/sleep 10
 ExecStart=$LLAMA_SERVER \\
     -m $model_path \\
     --host 0.0.0.0 \\

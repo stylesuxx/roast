@@ -1,8 +1,6 @@
 # R.O.A.S.T.
 ### Radeon On ARM, Serving Tokens
 
-Run llama.cpp with Vulkan GPU inference on a Raspberry Pi 5 with an AMD Radeon GPU.
-
 ## Quick Install
 
 Flash [Raspberry Pi OS Trixie Lite (64-bit)](https://www.raspberrypi.com/software/) to your SD card, boot, and run:
@@ -13,8 +11,6 @@ sudo bash roast-setup.sh
 ```
 
 A reboot is required after kernel installation. Re-run `sudo bash roast-setup.sh` after reboot to complete the setup.
-
-## What to Expect
 
 - **GPU-accelerated LLM inference** on a Raspberry Pi 5 via Vulkan
 - **~48 tok/s generation, ~365 tok/s prompt processing** with a 7B Q4_K_M model on an RX 5600 XT
@@ -50,15 +46,15 @@ A reboot is required after kernel installation. Re-run `sudo bash roast-setup.sh
 
 ## Model Manager
 
-The `roast` CLI is installed globally by the setup script. It manages model downloads and llama-server services.
+The `roast` CLI is installed globally by the setup script.
 
 ### Add a model
 
 ```bash
-sudo roast add https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/resolve/main/mistral-7b-v0.1.Q4_K_M.gguf --port 8080 --enable
+sudo roast add https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf --port 8080 --enable
 ```
 
-### Run multiple models on different ports
+### Multiple models on different ports
 
 ```bash
 sudo roast add <url-to-mistral.gguf> --port 8080 --enable
@@ -93,18 +89,15 @@ sudo roast update            # Update R.O.A.S.T. to the latest version
 ## GPU Monitoring
 
 ```bash
-# Included in the setup
-nvtop
+nvtop    # included in the setup
 ```
 
 ## References
 
 - [Coreforge Linux](https://github.com/Coreforge/linux) - GPU-enabled RPi kernel fork
-- [Coreforge memcpy patch](https://gist.githubusercontent.com/Coreforge/91da3d410ec7eb0ef5bc8dee24b91359) - optional, skip unless needed
+- [Coreforge memcpy patch](https://gist.githubusercontent.com/Coreforge/91da3d410ec7eb0ef5bc8dee24b91359)
 - [RPi kernel build docs](https://www.raspberrypi.com/documentation/computers/linux_kernel.html#natively-build-a-kernel)
 - [llama.cpp](https://github.com/ggerganov/llama.cpp)
 - [Open WebUI](https://github.com/open-webui/open-webui)
-
-## License
 
 [MIT](LICENSE)
