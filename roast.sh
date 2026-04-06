@@ -7,7 +7,7 @@
 # systemd services for llama-server instances.
 #
 # Usage:
-#   sudo roast add <hf-url> [--port PORT] [--enable]
+#   sudo roast add <hf-url> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--enable]
 #   sudo roast list
 #   sudo roast enable <model-name>
 #   sudo roast disable <model-name>
@@ -17,7 +17,7 @@
 #   sudo roast update
 #
 # Examples:
-#   sudo roast add https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/resolve/main/mistral-7b-v0.1.Q4_K_M.gguf --port 8080 --enable
+#   sudo roast add https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/resolve/main/mistral-7b-v0.1.Q4_K_M.gguf --port 8080 --gpu-layers 99 --context-size 32768 --enable
 #   sudo roast list
 #   sudo roast disable mistral-7b-v0.1.Q4_K_M
 
@@ -51,7 +51,7 @@ usage() {
     echo "R.O.A.S.T. Model Manager"
     echo ""
     echo "Usage:"
-    echo "  $(basename "$0") add <hf-url> [--port PORT] [--ngl NGL] [--ctx CTX] [--enable]"
+    echo "  $(basename "$0") add <hf-url> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--enable]"
     echo "  $(basename "$0") list"
     echo "  $(basename "$0") enable <model-name>"
     echo "  $(basename "$0") disable <model-name>"
@@ -62,8 +62,8 @@ usage() {
     echo ""
     echo "Options for 'add':"
     echo "  --port PORT   Port for llama-server (default: $DEFAULT_PORT)"
-    echo "  --ngl NGL     Number of GPU layers (default: $DEFAULT_NGL, use 0 for CPU only)"
-    echo "  --ctx CTX     Context size (default: $DEFAULT_CTX)"
+    echo "  --gpu-layers NGL     Number of GPU layers (default: $DEFAULT_NGL, use 0 for CPU only)"
+    echo "  --context-size CTX     Context size (default: $DEFAULT_CTX)"
     echo "  --enable      Enable and start the service immediately"
     echo ""
     echo "Model name is the GGUF filename without extension."
@@ -145,8 +145,8 @@ cmd_add() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --port)  port="$2"; shift 2 ;;
-            --ngl)   ngl="$2"; shift 2 ;;
-            --ctx)   ctx="$2"; shift 2 ;;
+            --gpu-layers)   ngl="$2"; shift 2 ;;
+            --context-size)   ctx="$2"; shift 2 ;;
             --enable) enable_after=true; shift ;;
             -*)      err "Unknown option: $1"; usage ;;
             *)
