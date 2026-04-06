@@ -538,7 +538,7 @@ MODEL_URLS=(
     "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
     "https://huggingface.co/TheBloke/deepseek-coder-6.7B-instruct-GGUF/resolve/main/deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
     "https://huggingface.co/QuantFactory/starcoder2-7b-instruct-GGUF/resolve/main/starcoder2-7b-instruct.Q4_K_M.gguf"
-    "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/qwen3-8b-q4_k_m.gguf"
+    "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf"
     "https://huggingface.co/bartowski/Meta-Llama-3.3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.3-8B-Instruct-Q4_K_M.gguf"
     "https://huggingface.co/MistralAI/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/mistral-7b-instruct-v0.3-q4_k_m.gguf"
 )

@@ -248,7 +248,7 @@ cmd_add() {
     log "Creating systemd service: $svc"
 
     # Build ExecStart command
-    local exec_cmd="$LLAMA_SERVER -m $model_path --host 0.0.0.0 --port $port -c $ctx -np $np"
+    local exec_cmd="$LLAMA_SERVER -m $model_path --host 0.0.0.0 --port $port -c $ctx -np $np --jinja"
     if [[ -n "$ngl" ]]; then
         exec_cmd="$exec_cmd -ngl $ngl"
     fi
@@ -315,16 +315,21 @@ cmd_list() {
         local model_name
         model_name=$(model_name_from_file "$model_file")
 
-        local status
+        local status status_display
         if systemctl is-active --quiet "$svc" 2>/dev/null; then
-            status="${GREEN}running${NC}"
+            status="running"
+            status_display="${GREEN}running${NC}"
         elif systemctl is-enabled --quiet "$svc" 2>/dev/null; then
-            status="${YELLOW}enabled${NC}"
+            status="enabled"
+            status_display="${YELLOW}enabled${NC}"
         else
             status="stopped"
+            status_display="stopped"
         fi
 
-        printf "%-40s %-8s %-10b %s\n" "$model_name" "$port" "$status" "$svc"
+        printf "%-40s %-8s " "$model_name" "$port"
+        echo -en "$status_display"
+        printf "%*s %s\n" $((10 - ${#status})) "" "$svc"
     done
 
     if ! $found; then
