@@ -12,6 +12,7 @@
 #   sudo roast enable <model-name>
 #   sudo roast disable <model-name>
 #   sudo roast remove <model-name>
+#   sudo roast config <model-name> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--parallel NP]
 #   sudo roast status
 #   sudo roast bench <model-name>
 #
@@ -30,8 +31,8 @@ LLAMA_SERVER="$LLAMA_DIR/build/bin/llama-server"
 MODELS_DIR="/opt/llama.cpp/models"
 SERVICE_PREFIX="roast"
 DEFAULT_PORT=8080
-DEFAULT_NGL=""
-DEFAULT_CTX=32768
+DEFAULT_NGL=99
+DEFAULT_CTX=16384
 DEFAULT_NP=1
 
 # --- Colors ---
@@ -56,15 +57,16 @@ usage() {
     echo "  $(basename "$0") enable <model-name>"
     echo "  $(basename "$0") disable <model-name>"
     echo "  $(basename "$0") remove <model-name>"
+    echo "  $(basename "$0") config <model-name> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--parallel NP]"
     echo "  $(basename "$0") status"
     echo "  $(basename "$0") bench <model-name>"
     echo ""
-    echo "Options for 'add':"
-    echo "  --port PORT   Port for llama-server (default: $DEFAULT_PORT)"
-    echo "  --gpu-layers NGL     Number of GPU layers (default: auto-fit, use 0 for CPU only)"
-    echo "  --context-size CTX     Context size (default: $DEFAULT_CTX)"
-    echo "  --parallel NP  Number of parallel request slots (default: $DEFAULT_NP)"
-    echo "  --enable      Enable and start the service immediately"
+    echo "Options for 'add' and 'config':"
+    echo "  --port PORT          Port for llama-server (default: $DEFAULT_PORT)"
+    echo "  --gpu-layers NGL     Number of GPU layers (default: $DEFAULT_NGL, use 0 for CPU only)"
+    echo "  --context-size CTX   Context size (default: $DEFAULT_CTX)"
+    echo "  --parallel NP        Number of parallel request slots (default: $DEFAULT_NP)"
+    echo "  --enable             Enable and start the service immediately (add only)"
     echo ""
     echo "Model name is the GGUF filename without extension."
     exit 1
@@ -394,6 +396,100 @@ cmd_remove() {
     fi
 }
 
+cmd_config() {
+    local model_name="$1"
+    shift
+    local svc
+    svc=$(service_name "$model_name")
+    local unit_path="/etc/systemd/system/${svc}.service"
+
+    if [[ ! -f "$unit_path" ]]; then
+        err "Service not found: $svc"
+        err "Use 'list' to see available models."
+        exit 1
+    fi
+
+    # Read current values from service file
+    local cur_port cur_ngl cur_ctx cur_np cur_model
+    cur_port=$(grep -oP '\-\-port \K\d+' "$unit_path" 2>/dev/null || echo "$DEFAULT_PORT")
+    cur_ngl=$(grep -oP '\-ngl \K\d+' "$unit_path" 2>/dev/null || echo "")
+    cur_ctx=$(grep -oP '\-c \K\d+' "$unit_path" 2>/dev/null || echo "$DEFAULT_CTX")
+    cur_np=$(grep -oP '\-np \K\d+' "$unit_path" 2>/dev/null || echo "$DEFAULT_NP")
+    cur_model=$(grep -oP '\-m \K\S+' "$unit_path" 2>/dev/null || echo "")
+
+    # Parse new values, defaulting to current
+    local port="$cur_port"
+    local ngl="$cur_ngl"
+    local ctx="$cur_ctx"
+    local np="$cur_np"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --port)  port="$2"; shift 2 ;;
+            --gpu-layers)   ngl="$2"; shift 2 ;;
+            --context-size)   ctx="$2"; shift 2 ;;
+            --parallel)   np="$2"; shift 2 ;;
+            -*)      err "Unknown option: $1"; usage ;;
+            *)       err "Unexpected argument: $1"; usage ;;
+        esac
+    done
+
+    # Check port conflicts (exclude current model)
+    local svc_model
+    svc_model=$(echo "$model_name" | tr '.' '-' | tr '[:upper:]' '[:lower:]')
+    if [[ "$port" != "$cur_port" ]]; then
+        local conflict
+        if conflict=$(check_port_conflict "$port" "$svc_model"); then
+            err "Port $port is already used by: $(basename "$conflict")"
+            exit 1
+        fi
+    fi
+
+    # Rebuild ExecStart
+    local exec_cmd="$LLAMA_SERVER -m $cur_model --host 0.0.0.0 --port $port -c $ctx -np $np"
+    if [[ -n "$ngl" ]]; then
+        exec_cmd="$exec_cmd -ngl $ngl"
+    fi
+
+    # Rebuild env lines
+    local env_lines="Environment=HOME=/home/$REAL_USER"
+    if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
+        env_lines="$env_lines
+Environment=LD_PRELOAD=/usr/local/lib/memcpy.so
+Environment=VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json"
+    fi
+
+    cat > "$unit_path" <<EOF
+[Unit]
+Description=R.O.A.S.T. llama-server - ${model_name}
+After=network.target
+ConditionPathExists=/dev/dri/renderD128
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=$REAL_USER
+ExecStartPre=/bin/sleep 10
+ExecStart=$exec_cmd
+Restart=on-failure
+RestartSec=5
+$env_lines
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    log "Updated $svc: port=$port, context=$ctx, ngl=${ngl:-auto}, parallel=$np"
+
+    # Restart if running
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+        log "Restarting $svc..."
+        systemctl restart "$svc"
+    fi
+}
+
 cmd_status() {
     echo -e "${BOLD}R.O.A.S.T. Status${NC}"
     echo ""
@@ -484,16 +580,32 @@ cmd_bench() {
         was_running=true
     fi
 
+    # Read context size and ngl from service config
+    local bench_ngl=99
+    local bench_ctx=16384
+    if [[ -f "$unit_path" ]]; then
+        local svc_ngl
+        svc_ngl=$(grep -oP '\-ngl \K\d+' "$unit_path" 2>/dev/null || true)
+        [[ -n "$svc_ngl" ]] && bench_ngl="$svc_ngl"
+        local svc_ctx
+        svc_ctx=$(grep -oP '\-c \K\d+' "$unit_path" 2>/dev/null || true)
+        [[ -n "$svc_ctx" ]] && bench_ctx="$svc_ctx"
+    fi
+
     log "Benchmarking: $model_name"
     info "Model: $model_path"
+    info "Context: $bench_ctx, GPU layers: $bench_ngl"
     echo ""
+
+    # Wake GPU from runtime suspend before benchmarking
+    cat /sys/class/drm/card*/device/power_state &>/dev/null || true
 
     cd /
     local bench_env=()
     if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
         bench_env=(env LD_PRELOAD=/usr/local/lib/memcpy.so VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json)
     fi
-    "${bench_env[@]}" "$llama_bench" -m "$model_path" -ngl 99
+    "${bench_env[@]}" "$llama_bench" -m "$model_path" -ngl "$bench_ngl" -ctk f16 -ctv f16 -c "$bench_ctx"
 
     # Restart service if it was running
     if $was_running; then
@@ -530,6 +642,11 @@ case "$COMMAND" in
     remove)
         [[ $# -lt 1 ]] && { err "Missing model name."; usage; }
         cmd_remove "$1"
+        ;;
+    config)
+        [[ $# -lt 1 ]] && { err "Missing model name."; usage; }
+        _model="$1"; shift
+        cmd_config "$_model" "$@"
         ;;
     status)
         cmd_status

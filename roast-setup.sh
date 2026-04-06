@@ -249,7 +249,11 @@ if $NEED_KERNEL; then
         # ---------------------------------------------------------------
         log "Installing kernel with amdgpu support via rpi-update..."
         log "Using PR: https://github.com/raspberrypi/linux/pull/7113"
-        sudo rpi-update "$RPI_UPDATE_PR"
+        rpi-update "$RPI_UPDATE_PR"
+
+        # Pin kernel packages so apt doesn't overwrite the rpi-update kernel
+        log "Pinning kernel packages to prevent apt from overwriting..."
+        apt-mark hold linux-image-rpi-2712 linux-image-rpi-v8 2>/dev/null || true
     fi
 
     # Enable PCIe Gen 3

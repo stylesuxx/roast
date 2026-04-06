@@ -106,6 +106,7 @@ sudo roast status            # Full status (GPU, Vulkan, models, disk)
 sudo roast enable <name>     # Start a model service
 sudo roast disable <name>    # Stop a model service
 sudo roast remove <name>     # Remove service and optionally delete the model file
+sudo roast config <name> ... # Change context size, GPU layers, port, etc.
 sudo roast bench <name>      # Run llama-bench on a model
 ```
 
@@ -115,8 +116,47 @@ sudo roast bench <name>      # Run llama-bench on a model
 /opt/llama.cpp/build/bin/llama-server -m /opt/llama.cpp/models/your-model.gguf --port 8080 -ngl 99
 ```
 
+## Performance Tuning
+
+After adding a model, run `sudo roast bench <model-name>` to verify performance. The bench command automatically uses the same context size and GPU layer settings as your running service, so the results are representative of real-world performance.
+
+```bash
+sudo roast bench qwen2.5-coder-7b-instruct-q4_k_m
+```
+
+Expected results for a 7B Q4_K_M model on an RX 5600 XT (16K context, all layers on GPU):
+
+| Metric | Expected | Problem if lower |
+|--------|----------|------------------|
+| pp (prompt processing) | ~375 tok/s | Layers or KV cache spilling to CPU |
+| tg (text generation) | ~46 tok/s | Layers or KV cache spilling to CPU |
+
+### Why performance can be slow
+
+The Pi 5 connects to the GPU via a single PCIe x1 Gen 3 lane (~1 GB/s). Once the model is loaded into VRAM, inference happens entirely on the GPU at full speed. But if any part of the model or its KV cache spills to system RAM, every token requires data to cross the PCIe bus, dropping performance by 10-20x.
+
+For full speed, the model weights + KV cache + compute buffers must all fit in VRAM:
+
+| VRAM | Model | Max context (approximate) |
+|------|-------|--------------------------|
+| 6 GB | 7B Q4_K_M (4.4 GB) | ~16K |
+| 8 GB | 7B Q4_K_M (4.4 GB) | ~48K |
+| 12 GB | 7B Q4_K_M (4.4 GB) | ~128K |
+| 12 GB | 13B Q4_K_M (7.9 GB) | ~32K |
+| 16 GB | 13B Q4_K_M (7.9 GB) | ~64K |
+
+### Fixing slow performance
+
+If bench results are significantly below expected (e.g. <20 tok/s), reduce context size or ensure all layers are on GPU:
+
+```bash
+sudo roast config <model-name> --gpu-layers 99 --context-size 16384
+sudo roast bench <model-name>
+```
+
 ## Things to Avoid
 
+- Do **not** run `apt full-upgrade` without checking - it can overwrite the rpi-update kernel. The setup script pins kernel packages to prevent this, but be cautious.
 - Do **not** add `memcpy.so` to `/etc/ld.so.preload` unless you hit alignment errors at runtime
 - Do **not** install `linux-image-arm64` (Debian generic kernel) - Pi 5 will not boot
 - Do **not** enable armhf multiarch - 16K page kernel breaks 32-bit ARM libs
