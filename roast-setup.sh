@@ -509,25 +509,33 @@ log "Models directory:    $LLAMA_MODELS_DIR"
 echo ""
 
 # --- Optional: install a starter model ---
-echo "Would you like to install a model? (fits ~6GB VRAM, Q4_K_M quantization)"
+echo "Would you like to install a model? (Q4_K_M quantization, ~4-5 GB)"
 echo ""
-echo "  1) Qwen 2.5 7B Instruct        - general purpose"
-echo "  2) Qwen 2.5 Coder 7B Instruct  - coding focused"
-echo "  3) Mistral 7B Instruct v0.3    - general purpose"
-echo "  4) Llama 3.1 8B Instruct       - general purpose"
-echo "  5) Skip - I'll add one later"
+echo "  Coding models:"
+echo "    1) Qwen 2.5 Coder 7B          - Alibaba, strong all-rounder"
+echo "    2) DeepSeek Coder 6.7B         - DeepSeek, dedicated code model"
+echo "    3) StarCoder2 7B               - BigCode, 600+ languages"
+echo ""
+echo "  General purpose models:"
+echo "    4) Qwen 3 8B                   - Alibaba, latest gen"
+echo "    5) Llama 3.3 8B Instruct       - Meta, good balance"
+echo "    6) Mistral 7B Instruct v0.3    - Mistral AI, fast inference"
+echo ""
+echo "    7) Skip - I'll add one later"
 echo ""
 
 MODEL_URLS=(
-    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf"
     "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+    "https://huggingface.co/TheBloke/deepseek-coder-6.7B-instruct-GGUF/resolve/main/deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
+    "https://huggingface.co/QuantFactory/starcoder2-7b-instruct-GGUF/resolve/main/starcoder2-7b-instruct.Q4_K_M.gguf"
+    "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/qwen3-8b-q4_k_m.gguf"
+    "https://huggingface.co/bartowski/Meta-Llama-3.3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.3-8B-Instruct-Q4_K_M.gguf"
     "https://huggingface.co/MistralAI/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/mistral-7b-instruct-v0.3-q4_k_m.gguf"
-    "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
 )
 
-ask "Choose [1-5]: " model_choice
+ask "Choose [1-7]: " model_choice
 case "$model_choice" in
-    [1-4])
+    [1-6])
         MODEL_URL="${MODEL_URLS[$((model_choice - 1))]}"
         log "Installing model..."
         "$ROAST_BIN" add "$MODEL_URL" --port 8080 --enable
