@@ -7,7 +7,7 @@
 # systemd services for llama-server instances.
 #
 # Usage:
-#   sudo roast add <hf-url> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--enable]
+#   sudo roast add <hf-url> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--parallel NP] [--enable]
 #   sudo roast list
 #   sudo roast enable <model-name>
 #   sudo roast disable <model-name>
@@ -31,8 +31,9 @@ LLAMA_SERVER="$LLAMA_DIR/build/bin/llama-server"
 MODELS_DIR="/opt/llama.cpp/models"
 SERVICE_PREFIX="roast"
 DEFAULT_PORT=8080
-DEFAULT_NGL=99
+DEFAULT_NGL=""
 DEFAULT_CTX=32768
+DEFAULT_NP=1
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -51,7 +52,7 @@ usage() {
     echo "R.O.A.S.T. Model Manager"
     echo ""
     echo "Usage:"
-    echo "  $(basename "$0") add <hf-url> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--enable]"
+    echo "  $(basename "$0") add <hf-url> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--parallel NP] [--enable]"
     echo "  $(basename "$0") list"
     echo "  $(basename "$0") enable <model-name>"
     echo "  $(basename "$0") disable <model-name>"
@@ -62,8 +63,9 @@ usage() {
     echo ""
     echo "Options for 'add':"
     echo "  --port PORT   Port for llama-server (default: $DEFAULT_PORT)"
-    echo "  --gpu-layers NGL     Number of GPU layers (default: $DEFAULT_NGL, use 0 for CPU only)"
+    echo "  --gpu-layers NGL     Number of GPU layers (default: auto-fit, use 0 for CPU only)"
     echo "  --context-size CTX     Context size (default: $DEFAULT_CTX)"
+    echo "  --parallel NP  Number of parallel request slots (default: $DEFAULT_NP)"
     echo "  --enable      Enable and start the service immediately"
     echo ""
     echo "Model name is the GGUF filename without extension."
@@ -140,6 +142,7 @@ cmd_add() {
     local port="$DEFAULT_PORT"
     local ngl="$DEFAULT_NGL"
     local ctx="$DEFAULT_CTX"
+    local np="$DEFAULT_NP"
     local enable_after=false
 
     while [[ $# -gt 0 ]]; do
@@ -147,6 +150,7 @@ cmd_add() {
             --port)  port="$2"; shift 2 ;;
             --gpu-layers)   ngl="$2"; shift 2 ;;
             --context-size)   ctx="$2"; shift 2 ;;
+            --parallel)   np="$2"; shift 2 ;;
             --enable) enable_after=true; shift ;;
             -*)      err "Unknown option: $1"; usage ;;
             *)
@@ -243,6 +247,12 @@ cmd_add() {
     local unit_path="/etc/systemd/system/${svc}.service"
     log "Creating systemd service: $svc"
 
+    # Build ExecStart command
+    local exec_cmd="$LLAMA_SERVER -m $model_path --host 0.0.0.0 --port $port -c $ctx -np $np"
+    if [[ -n "$ngl" ]]; then
+        exec_cmd="$exec_cmd -ngl $ngl"
+    fi
+
     cat > "$unit_path" <<EOF
 [Unit]
 Description=R.O.A.S.T. llama-server - ${model_name}
@@ -256,12 +266,7 @@ StartLimitBurst=5
 Type=simple
 User=$REAL_USER
 ExecStartPre=/bin/sleep 10
-ExecStart=$LLAMA_SERVER \\
-    -m $model_path \\
-    --host 0.0.0.0 \\
-    --port $port \\
-    -ngl $ngl \\
-    -c $ctx
+ExecStart=$exec_cmd
 Restart=on-failure
 RestartSec=5
 Environment=HOME=/home/$REAL_USER

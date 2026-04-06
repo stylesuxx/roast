@@ -38,6 +38,25 @@ A reboot is required after kernel installation. Re-run `sudo bash roast-setup.sh
 - AMD Radeon GPU connected via PCIe (tested with RX 5700 XT / Navi 10)
 - External power supply for the GPU
 
+## GPU Selection Guide
+
+The Pi 5 has a single PCIe x1 Gen 3 slot (~1 GB/s). This limits model load time but **not inference speed** - once the model is in VRAM, compute happens entirely on the GPU.
+
+**What matters most:**
+- **VRAM** - determines max model size and context window
+- **Compute speed** - faster GPU = faster tok/s
+- **amdgpu driver support** - GCN 5 / Polaris and newer
+
+| GPU | VRAM | Gen | What you can run |
+|-----|------|-----|------------------|
+| RX 5600 XT | 6 GB | RDNA1 | 7B Q4, ~8K context |
+| RX 6600 | 8 GB | RDNA2 | 7B Q4, ~32K context |
+| RX 6700 XT | 12 GB | RDNA2 | 13B Q4 or 7B Q8, large context |
+| RX 7600 | 8 GB | RDNA3 | 7B Q4, faster compute than RDNA2 |
+| RX 7700 XT | 12 GB | RDNA3 | Best balance of speed + VRAM |
+| RX 6800 | 16 GB | RDNA2 | 30B Q4 or 13B Q8 |
+| RX 9060 XT | 16 GB | RDNA4 | 30B Q4 or 13B Q8, fastest compute (needs kernel 6.14+, waiting on Coreforge 6.18 branch) |
+
 ## Requirements
 
 - Fresh Raspberry Pi OS Trixie **Lite** (64-bit / arm64)
