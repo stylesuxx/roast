@@ -249,7 +249,7 @@ if $NEED_KERNEL; then
         # ---------------------------------------------------------------
         log "Installing kernel with amdgpu support via rpi-update..."
         log "Using PR: https://github.com/raspberrypi/linux/pull/7113"
-        rpi-update "$RPI_UPDATE_PR"
+        SKIP_WARNING=1 rpi-update "$RPI_UPDATE_PR"
 
         # Pin kernel packages so apt doesn't overwrite the rpi-update kernel
         log "Pinning kernel packages to prevent apt from overwriting..."
