@@ -264,7 +264,7 @@ if $NEED_KERNEL; then
     log "Kernel installed successfully."
 
     warn "A reboot is required for the new kernel to take effect."
-    warn "After reboot, run this script again to complete the setup."
+    warn "After reboot, run 'sudo roast-setup' to complete the setup."
     echo ""
     ask "Reboot now? [Y/n] " ans
     [[ "$ans" =~ ^[Nn]$ ]] || { log "Rebooting..."; reboot; }
@@ -445,28 +445,21 @@ if [[ "$SKIP_LLAMA_BUILD" == false ]]; then
 fi
 
 # =====================================================================
-# Step 8: Install R.O.A.S.T. CLI
+# Step 8: Ensure R.O.A.S.T. CLI is available
 # =====================================================================
-step "Step 8: Install R.O.A.S.T. CLI"
+step "Step 8: R.O.A.S.T. CLI"
 
 ROAST_BIN="/usr/local/bin/roast"
 
-if [[ -x "$ROAST_BIN" ]]; then
-    log "R.O.A.S.T. CLI already installed at $ROAST_BIN"
-    cd "$ROAST_DIR"
-    git pull --ff-only 2>/dev/null || warn "Could not update repo, continuing with existing version."
-else
-    log "Cloning R.O.A.S.T. repo..."
-    if [[ -d "$ROAST_DIR/.git" ]]; then
-        cd "$ROAST_DIR"
-        git pull --ff-only 2>/dev/null || true
-    else
-        rm -rf "$ROAST_DIR"
-        git clone "$ROAST_REPO" "$ROAST_DIR"
-    fi
-    chmod +x "$ROAST_DIR/roast.sh"
+# Ensure symlinks exist (repo was cloned by install.sh)
+if [[ -d "$ROAST_DIR" ]]; then
+    chmod +x "$ROAST_DIR/roast.sh" "$ROAST_DIR/roast-setup.sh"
     ln -sf "$ROAST_DIR/roast.sh" "$ROAST_BIN"
-    log "R.O.A.S.T. CLI installed: roast"
+    ln -sf "$ROAST_DIR/roast-setup.sh" /usr/local/bin/roast-setup
+    log "R.O.A.S.T. CLI available: roast, roast-setup"
+else
+    warn "R.O.A.S.T. repo not found at $ROAST_DIR"
+    warn "Run the installer first: wget -qO- https://raw.githubusercontent.com/stylesuxx/roast/master/install.sh | sudo bash"
 fi
 
 # =====================================================================

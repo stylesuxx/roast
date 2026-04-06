@@ -14,7 +14,6 @@
 #   sudo roast remove <model-name>
 #   sudo roast status
 #   sudo roast bench <model-name>
-#   sudo roast update
 #
 # Examples:
 #   sudo roast add https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/resolve/main/mistral-7b-v0.1.Q4_K_M.gguf --port 8080 --gpu-layers 99 --context-size 32768 --enable
@@ -59,7 +58,6 @@ usage() {
     echo "  $(basename "$0") remove <model-name>"
     echo "  $(basename "$0") status"
     echo "  $(basename "$0") bench <model-name>"
-    echo "  $(basename "$0") update"
     echo ""
     echo "Options for 'add':"
     echo "  --port PORT   Port for llama-server (default: $DEFAULT_PORT)"
@@ -504,18 +502,6 @@ cmd_bench() {
     fi
 }
 
-cmd_update() {
-    if [[ -d "$ROAST_DIR/.git" ]]; then
-        log "Updating R.O.A.S.T...."
-        cd "$ROAST_DIR"
-        git pull --ff-only
-        log "Updated to $(git log --oneline -1)."
-    else
-        err "R.O.A.S.T. repo not found at $ROAST_DIR"
-        err "Run roast-setup.sh to install."
-        exit 1
-    fi
-}
 
 # --- Main ---
 if [[ $# -lt 1 ]]; then
@@ -551,9 +537,6 @@ case "$COMMAND" in
     bench)
         [[ $# -lt 1 ]] && { err "Missing model name."; usage; }
         cmd_bench "$1"
-        ;;
-    update)
-        cmd_update
         ;;
     *)
         err "Unknown command: $COMMAND"

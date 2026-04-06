@@ -6,18 +6,17 @@
 Flash [Raspberry Pi OS Trixie Lite (64-bit)](https://www.raspberrypi.com/software/) to your SD card, boot, and run:
 
 ```bash
-wget https://raw.githubusercontent.com/stylesuxx/roast/master/roast-setup.sh
-sudo bash roast-setup.sh
+wget -qO- https://raw.githubusercontent.com/stylesuxx/roast/master/install.sh | sudo bash
 ```
 
-A reboot is required after kernel installation. Re-run `sudo bash roast-setup.sh` after reboot to complete the setup.
+A reboot is required after kernel installation. Re-run `sudo roast-setup` after reboot to complete the setup.
 
 ### Coreforge method (alternative)
 
 If you prefer building a custom kernel from source (e.g. for a specific kernel version), use the `--coreforge` flag. This builds the [Coreforge GPU-enabled kernel](https://github.com/Coreforge/linux) and a patched mesa radv driver. Takes 1-2 hours.
 
 ```bash
-sudo bash roast-setup.sh --coreforge
+sudo roast-setup --coreforge
 ```
 
 ## What to Expect
@@ -102,7 +101,6 @@ sudo roast enable <name>     # Start a model service
 sudo roast disable <name>    # Stop a model service
 sudo roast remove <name>     # Remove service and optionally delete the model file
 sudo roast bench <name>      # Run llama-bench on a model
-sudo roast update            # Update R.O.A.S.T. to the latest version
 ```
 
 ### Manual run
