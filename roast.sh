@@ -605,7 +605,7 @@ cmd_bench() {
     if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
         bench_env=(env LD_PRELOAD=/usr/local/lib/memcpy.so VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json)
     fi
-    "${bench_env[@]}" "$llama_bench" -m "$model_path" -ngl "$bench_ngl" -ctk f16 -ctv f16 -c "$bench_ctx"
+    "${bench_env[@]}" "$llama_bench" -m "$model_path" -ngl "$bench_ngl"
 
     # Restart service if it was running
     if $was_running; then

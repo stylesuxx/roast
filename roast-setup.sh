@@ -256,6 +256,12 @@ if $NEED_KERNEL; then
         apt-mark hold linux-image-rpi-2712 linux-image-rpi-v8 2>/dev/null || true
     fi
 
+    # Disable GPU runtime power management (headless GPU fails to resume from suspend)
+    if [[ ! -f /etc/modprobe.d/amdgpu.conf ]] || ! grep -q 'runpm=0' /etc/modprobe.d/amdgpu.conf 2>/dev/null; then
+        echo 'options amdgpu runpm=0' > /etc/modprobe.d/amdgpu.conf
+        log "Disabled amdgpu runtime power management."
+    fi
+
     # Enable PCIe Gen 3
     if ! grep -q 'dtparam=pciex1_gen=3' /boot/firmware/config.txt; then
         log "Enabling PCIe Gen 3 in config.txt..."
@@ -492,9 +498,9 @@ if [[ "$ans" =~ ^[Yy]$ ]]; then
             --name open-webui \
             --restart always \
             ghcr.io/open-webui/open-webui:main
-        log "Open WebUI running at http://$(hostname):$OPEN_WEBUI_PORT"
+        log "Open WebUI running at http://$(hostname).local:$OPEN_WEBUI_PORT"
         echo ""
-        echo "  1. Open http://$(hostname):$OPEN_WEBUI_PORT in your browser"
+        echo "  1. Open http://$(hostname).local:$OPEN_WEBUI_PORT in your browser"
         echo "  2. Create an admin account on first login"
         echo "  3. If the model doesn't appear, go to Settings > Connections"
         echo "     and add: http://host.docker.internal:8080/v1"
