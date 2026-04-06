@@ -253,11 +253,18 @@ cmd_add() {
         exec_cmd="$exec_cmd -ngl $ngl"
     fi
 
+    # Check if the patched radv is needed (Coreforge method)
+    local env_lines="Environment=HOME=/home/$REAL_USER"
+    if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
+        env_lines="$env_lines
+Environment=LD_PRELOAD=/usr/local/lib/memcpy.so
+Environment=VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json"
+    fi
+
     cat > "$unit_path" <<EOF
 [Unit]
 Description=R.O.A.S.T. llama-server - ${model_name}
 After=network.target
-# Wait for GPU to be fully initialized before starting
 ConditionPathExists=/dev/dri/renderD128
 StartLimitIntervalSec=120
 StartLimitBurst=5
@@ -269,9 +276,7 @@ ExecStartPre=/bin/sleep 10
 ExecStart=$exec_cmd
 Restart=on-failure
 RestartSec=5
-Environment=HOME=/home/$REAL_USER
-Environment=LD_PRELOAD=/usr/local/lib/memcpy.so
-Environment=VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json
+$env_lines
 
 [Install]
 WantedBy=multi-user.target
@@ -486,9 +491,11 @@ cmd_bench() {
     echo ""
 
     cd /
-    LD_PRELOAD=/usr/local/lib/memcpy.so \
-    VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json \
-    "$llama_bench" -m "$model_path" -ngl 99
+    local bench_env=()
+    if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
+        bench_env=(env LD_PRELOAD=/usr/local/lib/memcpy.so VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json)
+    fi
+    "${bench_env[@]}" "$llama_bench" -m "$model_path" -ngl 99
 
     # Restart service if it was running
     if $was_running; then

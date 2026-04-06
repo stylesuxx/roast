@@ -3,22 +3,12 @@
 # R.O.A.S.T. Setup
 # Radeon On ARM, Serving Tokens
 #
-# Full setup script for llama.cpp with Vulkan on Raspberry Pi 5 + AMD GPU (RX 5700 XT)
+# Full setup script for llama.cpp with Vulkan on Raspberry Pi 5 + AMD GPU
 # Target OS: Debian Trixie (aarch64, RPi OS)
 #
-# This script:
-#   1. Fixes locale
-#   2. Updates the system
-#   3. Installs build dependencies and AMD firmware
-#   4. Builds the Coreforge GPU-enabled kernel (if needed)
-#   5. Builds a patched Vulkan driver (radv) and memcpy fix
-#   6. Builds llama.cpp with Vulkan backend
-#   7. Installs the R.O.A.S.T. CLI
-#   8. Optionally sets up Open WebUI via Docker
-#
 # Usage:
-#   chmod +x roast-setup.sh
-#   sudo ./roast-setup.sh
+#   sudo bash roast-setup.sh              # uses rpi-update (fast, recommended)
+#   sudo bash roast-setup.sh --coreforge  # builds Coreforge kernel + patched mesa
 #
 # The script is idempotent - it skips steps that are already complete.
 # A reboot is required after kernel installation before continuing.
@@ -26,9 +16,19 @@
 
 set -euo pipefail
 
+# --- Parse flags ---
+USE_COREFORGE=false
+for arg in "$@"; do
+    case "$arg" in
+        --coreforge) USE_COREFORGE=true ;;
+        *) echo "Unknown option: $arg"; echo "Usage: sudo bash roast-setup.sh [--coreforge]"; exit 1 ;;
+    esac
+done
+
 # --- Configuration ---
 ROAST_REPO="https://github.com/stylesuxx/roast.git"
 ROAST_DIR="/opt/roast"
+RPI_UPDATE_PR="pulls/7113"
 KERNEL_REPO="https://github.com/Coreforge/linux.git"
 KERNEL_BRANCH_PREFERRED="rpi-6.12.y-gpu"
 KERNEL_BRANCH_FALLBACK="rpi-6.6.y-gpu"
@@ -47,9 +47,9 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-log()  { echo -e "${GREEN}[✓]${NC} $*"; }
+log()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*" >&2; }
+err()  { echo -e "${RED}[x]${NC} $*" >&2; }
 step() { echo -e "\n${BOLD}=== $* ===${NC}"; }
 # Read from terminal even when script is piped via stdin
 ask()  { read -rp "$1" "$2" </dev/tty; }
@@ -81,6 +81,12 @@ if dpkg --print-foreign-architectures 2>/dev/null | grep -q armhf; then
     fi
     dpkg --remove-architecture armhf
     log "armhf multiarch removed."
+fi
+
+if $USE_COREFORGE; then
+    log "Using Coreforge kernel method (--coreforge)"
+else
+    log "Using rpi-update method (fast, recommended)"
 fi
 
 # --- State file to track progress across reboots ---
@@ -121,39 +127,36 @@ fi
 # Step 3: Install build dependencies
 # =====================================================================
 step "Step 3: Install build dependencies"
-KERNEL_BUILD_DEPS=(
-    git bc flex bison libncurses-dev libssl-dev
-    build-essential cmake libcurl4-openssl-dev
+BUILD_DEPS=(
+    git build-essential cmake
     libvulkan-dev vulkan-tools glslc
     firmware-amd-graphics
     nvtop
 )
-apt-get install -y "${KERNEL_BUILD_DEPS[@]}"
+if $USE_COREFORGE; then
+    BUILD_DEPS+=(bc flex bison libncurses-dev libssl-dev)
+fi
+apt-get install -y "${BUILD_DEPS[@]}"
 log "Build dependencies installed."
 
 # =====================================================================
-# Step 4: Check if amdgpu is already loaded (kernel already built)
+# Step 4: Enable amdgpu kernel support
 # =====================================================================
-step "Step 4: Check current kernel for amdgpu support"
+step "Step 4: Enable amdgpu kernel support"
 
 NEED_KERNEL=true
 if lsmod | grep -q amdgpu 2>/dev/null; then
-    log "amdgpu module is already loaded. Kernel build not needed."
+    log "amdgpu module is already loaded."
     NEED_KERNEL=false
 elif modprobe amdgpu 2>/dev/null; then
-    log "amdgpu module loaded successfully. Kernel build not needed."
+    log "amdgpu module loaded successfully."
     NEED_KERNEL=false
 elif find "/lib/modules/$(uname -r)" -name 'amdgpu.ko*' 2>/dev/null | grep -q .; then
     log "amdgpu module found but failed to load. It may need firmware or a reboot."
     NEED_KERNEL=false
 fi
 
-# =====================================================================
-# Step 5: Build Coreforge kernel (if needed)
-# =====================================================================
 if $NEED_KERNEL; then
-    step "Step 5: Build Coreforge GPU-enabled kernel"
-
     if state_done "kernel-installed"; then
         warn "Kernel was installed previously but amdgpu not detected."
         warn "You may need to reboot. Run this script again after reboot."
@@ -163,91 +166,91 @@ if $NEED_KERNEL; then
         exit 0
     fi
 
-    # Determine which branch to use
-    KERNEL_BRANCH=""
-    AVAILABLE_BRANCHES=$(git ls-remote --heads "$KERNEL_REPO" 2>/dev/null)
-    if echo "$AVAILABLE_BRANCHES" | grep -q "$KERNEL_BRANCH_PREFERRED"; then
-        KERNEL_BRANCH="$KERNEL_BRANCH_PREFERRED"
-    elif echo "$AVAILABLE_BRANCHES" | grep -q "$KERNEL_BRANCH_FALLBACK"; then
-        KERNEL_BRANCH="$KERNEL_BRANCH_FALLBACK"
-    else
-        err "No GPU-enabled branch found in Coreforge repo."
-        err "Available branches with 'gpu':"
-        echo "$AVAILABLE_BRANCHES" | grep gpu || echo "  (none)"
-        exit 1
-    fi
-    log "Using kernel branch: $KERNEL_BRANCH"
+    if $USE_COREFORGE; then
+        # ---------------------------------------------------------------
+        # Coreforge method: build a custom kernel with amdgpu enabled
+        # ---------------------------------------------------------------
+        log "Building Coreforge GPU-enabled kernel..."
 
-    # Clone kernel source
-    if [[ -d "$KERNEL_BUILD_DIR/.git" ]]; then
-        log "Kernel source already cloned at $KERNEL_BUILD_DIR"
-        cd "$KERNEL_BUILD_DIR"
-        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-        if [[ "$CURRENT_BRANCH" != "$KERNEL_BRANCH" ]]; then
-            warn "Existing clone is on branch '$CURRENT_BRANCH', expected '$KERNEL_BRANCH'."
-            warn "Removing and re-cloning..."
-            cd /
+        KERNEL_BRANCH=""
+        AVAILABLE_BRANCHES=$(git ls-remote --heads "$KERNEL_REPO" 2>/dev/null)
+        if echo "$AVAILABLE_BRANCHES" | grep -q "$KERNEL_BRANCH_PREFERRED"; then
+            KERNEL_BRANCH="$KERNEL_BRANCH_PREFERRED"
+        elif echo "$AVAILABLE_BRANCHES" | grep -q "$KERNEL_BRANCH_FALLBACK"; then
+            KERNEL_BRANCH="$KERNEL_BRANCH_FALLBACK"
+        else
+            err "No GPU-enabled branch found in Coreforge repo."
+            err "Available branches with 'gpu':"
+            echo "$AVAILABLE_BRANCHES" | grep gpu || echo "  (none)"
+            exit 1
+        fi
+        log "Using kernel branch: $KERNEL_BRANCH"
+
+        if [[ -d "$KERNEL_BUILD_DIR/.git" ]]; then
+            log "Kernel source already cloned at $KERNEL_BUILD_DIR"
+            cd "$KERNEL_BUILD_DIR"
+            CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            if [[ "$CURRENT_BRANCH" != "$KERNEL_BRANCH" ]]; then
+                warn "Existing clone is on branch '$CURRENT_BRANCH', expected '$KERNEL_BRANCH'."
+                warn "Removing and re-cloning..."
+                cd /
+                rm -rf "$KERNEL_BUILD_DIR"
+                git clone -b "$KERNEL_BRANCH" --depth=1 "$KERNEL_REPO" "$KERNEL_BUILD_DIR"
+                cd "$KERNEL_BUILD_DIR"
+            fi
+        else
+            log "Cloning Coreforge kernel (branch: $KERNEL_BRANCH)..."
             rm -rf "$KERNEL_BUILD_DIR"
             git clone -b "$KERNEL_BRANCH" --depth=1 "$KERNEL_REPO" "$KERNEL_BUILD_DIR"
             cd "$KERNEL_BUILD_DIR"
         fi
+
+        log "Configuring kernel..."
+        make bcm2712_defconfig
+
+        if ! grep -q 'CONFIG_DRM_AMDGPU=m' .config; then
+            log "Enabling amdgpu module in kernel config..."
+            scripts/config --module CONFIG_DRM_AMDGPU
+            scripts/config --enable CONFIG_DRM_AMD_DC
+            scripts/config --enable CONFIG_DRM_AMD_ACP
+            make olddefconfig
+        fi
+
+        if grep -q 'CONFIG_DRM_AMDGPU=m' .config; then
+            log "amdgpu configured as module."
+        elif grep -q 'CONFIG_DRM_AMDGPU=y' .config; then
+            log "amdgpu configured as built-in."
+        else
+            err "Failed to enable amdgpu in kernel config."
+            err "You may need to run 'make menuconfig' manually at: $KERNEL_BUILD_DIR"
+            exit 1
+        fi
+
+        log "Building kernel with $BUILD_JOBS jobs (this will take a while)..."
+        make -j"$BUILD_JOBS" Image.gz modules dtbs
+
+        log "Installing kernel modules..."
+        make -j"$BUILD_JOBS" modules_install
+
+        log "Backing up current kernel..."
+        if [[ -f "/boot/firmware/${KERNEL_NAME}.img" ]]; then
+            cp "/boot/firmware/${KERNEL_NAME}.img" "/boot/firmware/${KERNEL_NAME}-backup.img"
+            log "Backup saved as ${KERNEL_NAME}-backup.img"
+        fi
+
+        log "Installing new kernel..."
+        cp arch/arm64/boot/Image.gz "/boot/firmware/${KERNEL_NAME}.img"
+        cp arch/arm64/boot/dts/broadcom/*.dtb /boot/firmware/
+        cp arch/arm64/boot/dts/overlays/*.dtb* /boot/firmware/overlays/
+        cp arch/arm64/boot/dts/overlays/README /boot/firmware/overlays/
     else
-        log "Cloning Coreforge kernel (branch: $KERNEL_BRANCH)..."
-        rm -rf "$KERNEL_BUILD_DIR"
-        git clone -b "$KERNEL_BRANCH" --depth=1 "$KERNEL_REPO" "$KERNEL_BUILD_DIR"
-        cd "$KERNEL_BUILD_DIR"
+        # ---------------------------------------------------------------
+        # rpi-update method: install pre-built kernel from PR #7113
+        # ---------------------------------------------------------------
+        log "Installing kernel with amdgpu support via rpi-update..."
+        log "Using PR: https://github.com/raspberrypi/linux/pull/7113"
+        sudo rpi-update "$RPI_UPDATE_PR"
     fi
-
-    # Configure kernel
-    log "Configuring kernel..."
-    make bcm2712_defconfig
-
-    # Enable amdgpu as module if not already enabled
-    if ! grep -q 'CONFIG_DRM_AMDGPU=m' .config; then
-        log "Enabling amdgpu module in kernel config..."
-        # Enable DRM and amdgpu dependencies
-        scripts/config --module CONFIG_DRM_AMDGPU
-        scripts/config --enable CONFIG_DRM_AMD_DC
-        scripts/config --enable CONFIG_DRM_AMD_ACP
-        # Run olddefconfig to resolve any new dependencies
-        make olddefconfig
-    fi
-
-    # Verify amdgpu is configured
-    if grep -q 'CONFIG_DRM_AMDGPU=m' .config; then
-        log "amdgpu configured as module."
-    elif grep -q 'CONFIG_DRM_AMDGPU=y' .config; then
-        log "amdgpu configured as built-in."
-    else
-        err "Failed to enable amdgpu in kernel config."
-        err "You may need to run 'make menuconfig' manually at: $KERNEL_BUILD_DIR"
-        err "Navigate to: Device Drivers → Graphics Support → AMD GPU → enable as module (M)"
-        exit 1
-    fi
-
-    # Build kernel
-    log "Building kernel with $BUILD_JOBS jobs (this will take a while)..."
-    make -j"$BUILD_JOBS" Image.gz modules dtbs
-
-    # Install modules
-    log "Installing kernel modules..."
-    make -j"$BUILD_JOBS" modules_install
-
-    # Backup and install kernel image
-    log "Backing up current kernel..."
-    if [[ -f "/boot/firmware/${KERNEL_NAME}.img" ]]; then
-        cp "/boot/firmware/${KERNEL_NAME}.img" "/boot/firmware/${KERNEL_NAME}-backup.img"
-        log "Backup saved as ${KERNEL_NAME}-backup.img"
-    fi
-
-    log "Installing new kernel..."
-    cp arch/arm64/boot/Image.gz "/boot/firmware/${KERNEL_NAME}.img"
-    cp arch/arm64/boot/dts/broadcom/*.dtb /boot/firmware/
-    cp arch/arm64/boot/dts/overlays/*.dtb* /boot/firmware/overlays/
-    cp arch/arm64/boot/dts/overlays/README /boot/firmware/overlays/
-
-    state_mark "kernel-installed"
-    log "Kernel installed successfully."
 
     # Enable PCIe Gen 3
     if ! grep -q 'dtparam=pciex1_gen=3' /boot/firmware/config.txt; then
@@ -257,20 +260,23 @@ if $NEED_KERNEL; then
         log "PCIe Gen 3 already enabled."
     fi
 
+    state_mark "kernel-installed"
+    log "Kernel installed successfully."
+
     warn "A reboot is required for the new kernel to take effect."
-    warn "After reboot, run this script again to build llama.cpp."
+    warn "After reboot, run this script again to complete the setup."
     echo ""
     ask "Reboot now? [Y/n] " ans
     [[ "$ans" =~ ^[Nn]$ ]] || { log "Rebooting..."; reboot; }
     exit 0
 else
-    log "Kernel has amdgpu support. Skipping kernel build."
+    log "Kernel has amdgpu support. Skipping kernel step."
 fi
 
 # =====================================================================
-# Step 6: Verify GPU on PCIe bus
+# Step 5: Verify GPU
 # =====================================================================
-step "Step 6: Verify AMD GPU"
+step "Step 5: Verify AMD GPU"
 
 if lspci 2>/dev/null | grep -qi 'amd.*navi\|radeon'; then
     log "AMD GPU detected on PCIe bus."
@@ -279,78 +285,75 @@ else
 fi
 
 # =====================================================================
-# Step 7: Build patched mesa radv + memcpy fix
+# Step 6: Vulkan driver fix (Coreforge method only)
 # =====================================================================
-step "Step 7: Build patched Vulkan driver (radv)"
-
-# The Pi 5 uses a 16K page size kernel. The stock mesa radv driver has two issues:
+# The Coreforge kernel uses a 16K page size. The stock mesa radv driver has
+# two issues on 16K page kernels:
 #
-# 1. radv contains unaligned 8-byte stores (str d-reg to non-8-byte-aligned addresses)
-#    which cause SIGBUS on aarch64. Rebuilding with -mno-strict-align fixes this.
+# 1. radv contains unaligned 8-byte stores (str d-reg to non-8-byte-aligned
+#    addresses) which cause SIGBUS on aarch64. Rebuilding with
+#    -mno-strict-align fixes this.
 #
-# 2. glibc's optimized memcpy uses 128-bit aligned stores (str q-reg) that also
-#    cause SIGBUS when radv passes unaligned buffers. The Coreforge memcpy patch
-#    provides a byte-safe fallback via LD_PRELOAD.
+# 2. glibc's optimized memcpy uses 128-bit aligned stores (str q-reg) that
+#    also cause SIGBUS when radv passes unaligned buffers. The Coreforge
+#    memcpy patch provides a byte-safe fallback via LD_PRELOAD.
 #
-# Both are needed together - radv fix alone still crashes in glibc memcpy,
-# and memcpy patch alone still crashes in radv's own unaligned stores.
+# Both are needed together. The rpi-update method (PR #7113) does not have
+# this issue since the kernel + mesa combination works out of the box.
 
 MEMCPY_SO="/usr/local/lib/memcpy.so"
 RADV_SO="/usr/local/lib/libvulkan_radeon_fixed.so"
 RADV_ICD="/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json"
 MESA_VERSION="25.0.7"
 MESA_BUILD_DIR="/tmp/mesa-${MESA_VERSION}"
+NEED_PATCHED_RADV=false
 
-# Test if the stock radv works (it won't on 16K page kernels)
-NEED_PATCHED_RADV=true
+# Test if the stock radv works
 if command -v vulkaninfo &>/dev/null; then
-    if vulkaninfo --summary &>/dev/null; then
-        log "Stock Vulkan driver works. Skipping mesa rebuild."
-        NEED_PATCHED_RADV=false
+    if ! vulkaninfo --summary &>/dev/null; then
+        NEED_PATCHED_RADV=true
     fi
 fi
 
-if [[ "$NEED_PATCHED_RADV" == false ]]; then
-    log "No patched radv needed."
-elif [[ -f "$RADV_SO" && -f "$MEMCPY_SO" && -f "$RADV_ICD" ]]; then
-    log "Patched radv and memcpy already installed."
-else
-    # Install mesa build dependencies
-    log "Installing mesa build dependencies..."
-    apt-get install -y meson ninja-build python3-mako python3-ply python3-yaml \
-        libdrm-dev libdrm-amdgpu1 libelf-dev libexpat1-dev libwayland-dev \
-        libwayland-egl-backend-dev wayland-protocols libxrandr-dev libxfixes-dev \
-        libxcb-shm0-dev libxcb-randr0-dev libxcb-keysyms1-dev libxshmfence-dev \
-        glslang-tools llvm-19-dev libzstd-dev libunwind-dev libsensors-dev
+if $NEED_PATCHED_RADV; then
+    step "Step 6: Build patched Vulkan driver (radv)"
 
-    # Download and extract mesa source
-    if [[ ! -d "$MESA_BUILD_DIR/build" ]]; then
-        log "Downloading mesa ${MESA_VERSION}..."
-        cd /tmp
-        wget -q "https://archive.mesa3d.org/mesa-${MESA_VERSION}.tar.xz" -O "mesa-${MESA_VERSION}.tar.xz"
-        tar xf "mesa-${MESA_VERSION}.tar.xz"
+    if [[ -f "$RADV_SO" && -f "$MEMCPY_SO" && -f "$RADV_ICD" ]]; then
+        log "Patched radv and memcpy already installed."
+    else
+        log "Installing mesa build dependencies..."
+        apt-get install -y meson ninja-build python3-mako python3-ply python3-yaml \
+            libdrm-dev libdrm-amdgpu1 libelf-dev libexpat1-dev libwayland-dev \
+            libwayland-egl-backend-dev wayland-protocols libxrandr-dev libxfixes-dev \
+            libxcb-shm0-dev libxcb-randr0-dev libxcb-keysyms1-dev libxshmfence-dev \
+            glslang-tools llvm-19-dev libzstd-dev libunwind-dev libsensors-dev
+
+        if [[ ! -d "$MESA_BUILD_DIR/build" ]]; then
+            log "Downloading mesa ${MESA_VERSION}..."
+            cd /tmp
+            wget -q "https://archive.mesa3d.org/mesa-${MESA_VERSION}.tar.xz" -O "mesa-${MESA_VERSION}.tar.xz"
+            tar xf "mesa-${MESA_VERSION}.tar.xz"
+            cd "$MESA_BUILD_DIR"
+
+            log "Configuring mesa radv with -mno-strict-align..."
+            meson setup build \
+                -Dvulkan-drivers=amd \
+                -Dgallium-drivers= \
+                -Dplatforms= \
+                -Dc_args="-mno-strict-align" \
+                -Dcpp_args="-mno-strict-align" \
+                -Dllvm=enabled \
+                --prefix=/usr \
+                --libdir=lib/aarch64-linux-gnu
+        fi
+
         cd "$MESA_BUILD_DIR"
+        log "Building radv (this may take a while)..."
+        ninja -C build src/amd/vulkan/libvulkan_radeon.so
 
-        log "Configuring mesa radv with -mno-strict-align..."
-        meson setup build \
-            -Dvulkan-drivers=amd \
-            -Dgallium-drivers= \
-            -Dplatforms= \
-            -Dc_args="-mno-strict-align" \
-            -Dcpp_args="-mno-strict-align" \
-            -Dllvm=enabled \
-            --prefix=/usr \
-            --libdir=lib/aarch64-linux-gnu
-    fi
-
-    cd "$MESA_BUILD_DIR"
-    log "Building radv (this may take a while)..."
-    ninja -C build src/amd/vulkan/libvulkan_radeon.so
-
-    # Install patched radv
-    cp build/src/amd/vulkan/libvulkan_radeon.so "$RADV_SO"
-    mkdir -p "$(dirname "$RADV_ICD")"
-    cat > "$RADV_ICD" <<ICDEOF
+        cp build/src/amd/vulkan/libvulkan_radeon.so "$RADV_SO"
+        mkdir -p "$(dirname "$RADV_ICD")"
+        cat > "$RADV_ICD" <<ICDEOF
 {
     "file_format_version": "1.0.0",
     "ICD": {
@@ -359,35 +362,45 @@ else
     }
 }
 ICDEOF
-    log "Patched radv installed to $RADV_SO"
+        log "Patched radv installed to $RADV_SO"
 
-    # Build and install memcpy alignment fix
-    log "Building memcpy alignment patch..."
-    MEMCPY_GIST="https://gist.githubusercontent.com/Coreforge/91da3d410ec7eb0ef5bc8dee24b91359/raw/b4848d1da9fff0cfcf7b601713efac1909e408e8/memcpy_unaligned.c"
-    rm -f /tmp/memcpy_unaligned.c
-    wget -q -O /tmp/memcpy_unaligned.c "$MEMCPY_GIST"
-    gcc -shared -fPIC -o "$MEMCPY_SO" /tmp/memcpy_unaligned.c
-    log "memcpy patch installed to $MEMCPY_SO"
+        log "Building memcpy alignment patch..."
+        MEMCPY_GIST="https://gist.githubusercontent.com/Coreforge/91da3d410ec7eb0ef5bc8dee24b91359/raw/b4848d1da9fff0cfcf7b601713efac1909e408e8/memcpy_unaligned.c"
+        rm -f /tmp/memcpy_unaligned.c
+        wget -q -O /tmp/memcpy_unaligned.c "$MEMCPY_GIST"
+        gcc -shared -fPIC -o "$MEMCPY_SO" /tmp/memcpy_unaligned.c
+        log "memcpy patch installed to $MEMCPY_SO"
 
-    # Clean up build artifacts
-    cd /
-    rm -rf "$MESA_BUILD_DIR" "/tmp/mesa-${MESA_VERSION}.tar.xz" /tmp/memcpy_unaligned.c
-fi
+        cd /
+        rm -rf "$MESA_BUILD_DIR" "/tmp/mesa-${MESA_VERSION}.tar.xz" /tmp/memcpy_unaligned.c
+    fi
 
-# Verify Vulkan works with patched driver
-if command -v vulkaninfo &>/dev/null && [[ -f "$RADV_SO" && -f "$MEMCPY_SO" ]]; then
-    VKDEV=$(LD_PRELOAD="$MEMCPY_SO" VK_ICD_FILENAMES="$RADV_ICD" vulkaninfo 2>/dev/null | grep 'deviceName' | head -1 | sed 's/.*= //' || true)
+    # Verify patched driver works
+    if [[ -f "$RADV_SO" && -f "$MEMCPY_SO" ]]; then
+        VKDEV=$(LD_PRELOAD="$MEMCPY_SO" VK_ICD_FILENAMES="$RADV_ICD" vulkaninfo 2>/dev/null | grep 'deviceName' | head -1 | sed 's/.*= //' || true)
+        if [[ -n "$VKDEV" ]]; then
+            log "Vulkan verified: $VKDEV"
+        else
+            warn "vulkaninfo did not detect a Vulkan device."
+        fi
+    fi
+
+    # Mark that services need the patched radv
+    state_mark "needs-patched-radv"
+else
+    step "Step 6: Verify Vulkan"
+    VKDEV=$(vulkaninfo 2>/dev/null | grep 'deviceName' | head -1 | sed 's/.*= //' || true)
     if [[ -n "$VKDEV" ]]; then
-        log "Vulkan verified: $VKDEV"
+        log "Vulkan works: $VKDEV"
     else
         warn "vulkaninfo did not detect a Vulkan device."
     fi
 fi
 
 # =====================================================================
-# Step 8: Build llama.cpp
+# Step 7: Build llama.cpp
 # =====================================================================
-step "Step 8: Build llama.cpp with Vulkan backend"
+step "Step 7: Build llama.cpp with Vulkan backend"
 
 if [[ -x "$LLAMA_DIR/build/bin/llama-server" ]]; then
     log "llama-server already built at $LLAMA_DIR/build/bin/llama-server"
@@ -424,7 +437,6 @@ if [[ "$SKIP_LLAMA_BUILD" == false ]]; then
     cmake -B build -DGGML_VULKAN=1
     cmake --build build --config Release -j"$BUILD_JOBS"
 
-    # Create models directory
     mkdir -p "$LLAMA_MODELS_DIR"
     chown -R "$REAL_USER":"$REAL_USER" "$LLAMA_MODELS_DIR"
 
@@ -433,9 +445,9 @@ if [[ "$SKIP_LLAMA_BUILD" == false ]]; then
 fi
 
 # =====================================================================
-# Step 9: Install R.O.A.S.T. CLI
+# Step 8: Install R.O.A.S.T. CLI
 # =====================================================================
-step "Step 9: Install R.O.A.S.T. CLI"
+step "Step 8: Install R.O.A.S.T. CLI"
 
 ROAST_BIN="/usr/local/bin/roast"
 
@@ -458,9 +470,9 @@ else
 fi
 
 # =====================================================================
-# Step 10: Open WebUI (optional)
+# Step 9: Open WebUI (optional)
 # =====================================================================
-step "Step 10: Open WebUI setup (optional)"
+step "Step 9: Open WebUI setup (optional)"
 
 ask "Install Open WebUI via Docker? [y/N] " ans
 if [[ "$ans" =~ ^[Yy]$ ]]; then

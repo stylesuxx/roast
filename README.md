@@ -12,25 +12,38 @@ sudo bash roast-setup.sh
 
 A reboot is required after kernel installation. Re-run `sudo bash roast-setup.sh` after reboot to complete the setup.
 
+### Coreforge method (alternative)
+
+If you prefer building a custom kernel from source (e.g. for a specific kernel version), use the `--coreforge` flag. This builds the [Coreforge GPU-enabled kernel](https://github.com/Coreforge/linux) and a patched mesa radv driver. Takes 1-2 hours.
+
+```bash
+sudo bash roast-setup.sh --coreforge
+```
+
+## What to Expect
+
 - **GPU-accelerated LLM inference** on a Raspberry Pi 5 via Vulkan
 - **~48 tok/s generation, ~365 tok/s prompt processing** with a 7B Q4_K_M model on an RX 5600 XT
 - **Multiple models** can be managed as systemd services on different ports
 - **Web UI** via Open WebUI (optional, Docker-based)
 - **No Ollama needed** - llama-server provides an OpenAI-compatible API directly
-- Setup takes about **1-2 hours** (most of that is kernel and mesa compilation)
+- Setup takes about **10 minutes** (default) or **1-2 hours** (with `--coreforge`)
 
 ## What It Does
+
+**Default (rpi-update) method:**
 
 1. Fixes locale to `en_US.UTF-8`
 2. Runs a full system upgrade
 3. Removes armhf multiarch (incompatible with Pi 5's 16K page kernel)
-4. Builds and installs the [Coreforge GPU-enabled kernel](https://github.com/Coreforge/linux) (adds `amdgpu` module)
+4. Installs kernel with amdgpu support via [rpi-update PR #7113](https://github.com/raspberrypi/linux/pull/7113)
 5. Enables PCIe Gen 3
-6. Installs AMD firmware and Vulkan drivers (mesa radv)
-7. Builds a patched radv driver (`-mno-strict-align`) and memcpy fix for 16K page compatibility
-8. Builds [llama.cpp](https://github.com/ggerganov/llama.cpp) with Vulkan backend
-9. Installs the `roast` CLI globally
-10. Optionally installs Docker and [Open WebUI](https://github.com/open-webui/open-webui)
+6. Installs AMD firmware and Vulkan drivers
+7. Builds [llama.cpp](https://github.com/ggerganov/llama.cpp) with Vulkan backend
+8. Installs the `roast` CLI globally
+9. Optionally installs Docker and [Open WebUI](https://github.com/open-webui/open-webui)
+
+**Coreforge method (`--coreforge`)** does the same but replaces step 4 with a kernel build from source, and adds a patched mesa radv driver + memcpy fix for 16K page compatibility.
 
 ## Hardware
 
@@ -55,7 +68,7 @@ The Pi 5 has a single PCIe x1 Gen 3 slot (~1 GB/s). This limits model load time 
 | RX 7600 | 8 GB | RDNA3 | 7B Q4, faster compute than RDNA2 |
 | RX 7700 XT | 12 GB | RDNA3 | Best balance of speed + VRAM |
 | RX 6800 | 16 GB | RDNA2 | 30B Q4 or 13B Q8 |
-| RX 9060 XT | 16 GB | RDNA4 | 30B Q4 or 13B Q8, fastest compute (needs kernel 6.14+, waiting on Coreforge 6.18 branch) |
+| RX 9060 XT | 16 GB | RDNA4 | 30B Q4 or 13B Q8, fastest compute (default method only, `--coreforge` not yet supported) |
 
 ## Requirements
 
