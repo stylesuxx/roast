@@ -1,6 +1,12 @@
 # R.O.A.S.T.
 ### Radeon On ARM, Serving Tokens
 
+Run llama.cpp with Vulkan GPU inference on a Raspberry Pi 5 with an AMD Radeon GPU.
+
+[![Arasaka KAI-7](https://media.printables.com/media/prints/1197633/images/9180493_2f9055ba-c9aa-4536-9c04-976aeef8cca7_c1ce62bc-3c14-4782-911c-a05ded12a3ed/thumbs/cover/800x800/jpg/img_20250310_1654428703.jpg)](https://www.printables.com/model/1197633-arasaka-kai-7)
+
+*Hardware: [Arasaka KAI-7](https://www.printables.com/model/1197633-arasaka-kai-7) - cyberpunk inspired, RPi 5 based, small form factor PC with AMD Radeon RX 5600 XT GPU*
+
 ## Quick Install
 
 Flash [Raspberry Pi OS Trixie Lite (64-bit)](https://www.raspberrypi.com/software/) to your SD card, boot, and run:
