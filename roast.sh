@@ -240,9 +240,9 @@ cmd_add() {
     else
         log "Downloading model..."
 
-        # Download using huggingface-cli
-        log "Using huggingface-cli..."
-        huggingface-cli download "$repo_id" "$filename" --local-dir "$MODELS_DIR"
+        # Download using hf CLI
+        log "Downloading from HuggingFace..."
+        PATH="$HOME/.local/bin:/root/.local/bin:$PATH" hf download "$repo_id" "$filename" --local-dir "$MODELS_DIR"
 
         if [[ ! -f "$model_path" || ! -s "$model_path" ]]; then
             err "Download failed or file is empty."

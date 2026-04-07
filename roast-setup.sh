@@ -476,7 +476,7 @@ fi
 # Step 9: Install huggingface-cli
 # =====================================================================
 step "Step 9: Install huggingface-cli"
-if command -v huggingface-cli &>/dev/null; then
+if command -v hf &>/dev/null || [[ -x /root/.local/bin/hf ]]; then
     log "huggingface-cli already installed."
 else
     log "Installing huggingface-cli..."
