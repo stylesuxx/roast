@@ -16,7 +16,6 @@ ROAST_DIR="/opt/roast"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-BOLD='\033[1m'
 NC='\033[0m'
 
 log() { echo -e "${GREEN}[+]${NC} $*"; }
@@ -27,18 +26,39 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Retry logic for network-dependent commands (max 3 attempts)
+retry_until_success() {
+    local max_attempts=3
+    local attempt=1
+    local backoff=1
+    while [[ $attempt -le $max_attempts ]]; do
+        if "$@"; then
+            return 0
+        fi
+        log "Attempt $attempt failed, retrying in ${backoff}s..."
+        sleep "$backoff"
+        ((attempt++))
+        backoff=$((backoff * 2))
+    done
+    return 1
+}
+
+# System info logging
+log "System: $(uname -o) $(uname -r) $(uname -m)"
+log "Raspberry Pi OS version: $(lsb_release -ds 2>/dev/null || echo 'unknown')"
+
 log "Installing git..."
-apt-get update -qq
-apt-get install -y -qq git
+retry_until_success apt-get update -qq || exit 1
+retry_until_success apt-get install -y -qq git || exit 1
 
 if [[ -d "$ROAST_DIR/.git" ]]; then
     log "R.O.A.S.T. already cloned, updating..."
     cd "$ROAST_DIR"
-    git pull --ff-only
+    timeout 300 git pull --ff-only || exit 1
 else
     log "Cloning R.O.A.S.T...."
     rm -rf "$ROAST_DIR"
-    git clone "$ROAST_REPO" "$ROAST_DIR"
+    timeout 600 git clone --depth 1 "$ROAST_REPO" "$ROAST_DIR" || exit 1
 fi
 
 chmod +x "$ROAST_DIR/roast-setup.sh"
@@ -46,8 +66,10 @@ chmod +x "$ROAST_DIR/roast.sh"
 ln -sf "$ROAST_DIR/roast-setup.sh" /usr/local/bin/roast-setup
 ln -sf "$ROAST_DIR/roast.sh" /usr/local/bin/roast
 
-log "R.O.A.S.T. installed. Starting setup..."
-echo ""
+log "Installation complete. Run 'roast-setup' next."
+if ! command -v roast-setup >/dev/null 2>&1; then
+    err "roast-setup not found. Installation may be incomplete."
+    exit 1
+fi
 
-# Pass through any arguments (e.g. --coreforge)
 exec "$ROAST_DIR/roast-setup.sh" "$@"
