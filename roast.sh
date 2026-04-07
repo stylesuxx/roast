@@ -32,7 +32,7 @@ SERVICE_PREFIX="roast"
 DEFAULT_PORT=8080
 DEFAULT_NGL=99
 DEFAULT_CTX=16384
-DEFAULT_NP=""
+DEFAULT_NP=1
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -64,7 +64,9 @@ usage() {
     echo "  --port PORT          Port for llama-server (default: $DEFAULT_PORT)"
     echo "  --gpu-layers NGL     Number of GPU layers (default: $DEFAULT_NGL, use 0 for CPU only)"
     echo "  --context-size CTX   Context size (default: $DEFAULT_CTX)"
-    echo "  --parallel NP        Number of parallel request slots (default: auto)"
+    echo "  --parallel NP        Number of parallel request slots (default: $DEFAULT_NP)"
+    echo "                       Each slot gets its own KV cache (context / NP per user)"
+    echo "                       Higher NP = more concurrent users but less context each"
     echo "  --enable             Enable and start the service immediately (add only)"
     echo ""
     echo "Model name is the GGUF filename without extension."

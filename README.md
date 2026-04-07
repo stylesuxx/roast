@@ -145,12 +145,22 @@ For full speed, the model weights + KV cache + compute buffers must all fit in V
 | 12 GB | 13B Q4_K_M (7.9 GB) | ~32K |
 | 16 GB | 13B Q4_K_M (7.9 GB) | ~64K |
 
-### Fixing slow performance
+### Parallel slots
 
-If bench results are significantly below expected (e.g. <20 tok/s), reduce context size or ensure all layers are on GPU:
+By default, each model runs with `--parallel 1` (single user). This gives one user the full context window. If you need multiple concurrent users (e.g. Open WebUI + aider at the same time), increase it:
 
 ```bash
-sudo roast config <model-name> --gpu-layers 99 --context-size 16384
+sudo roast config <model-name> --parallel 2
+```
+
+Each slot gets its own KV cache, so the VRAM cost multiplies: 2 slots = 2x KV cache. On limited VRAM, reduce context size when increasing parallel slots.
+
+### Fixing slow performance
+
+If bench results are significantly below expected (e.g. <20 tok/s), reduce context size, parallel slots, or ensure all layers are on GPU:
+
+```bash
+sudo roast config <model-name> --gpu-layers 99 --context-size 16384 --parallel 1
 sudo roast bench <model-name>
 ```
 
