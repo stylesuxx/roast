@@ -18,7 +18,7 @@
 # Examples:
 #   sudo roast add https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/resolve/main/mistral-7b-v0.1.Q4_K_M.gguf --port 8080 --gpu-layers 99 --context-size 32768 --enable
 #   sudo roast list
-#   sudo roast disable mistral-7b-v0.1.Q4_K_M
+#   sudo roast disable mistral-7b-v0.1.Q4_K_M-8080
 
 set -euo pipefail
 
@@ -95,9 +95,48 @@ model_name_from_file() {
     basename "$filename" .gguf
 }
 
-# Get the service unit name for a model
+# Get the service unit name for a model (includes port for uniqueness)
 service_name() {
-    echo "${SERVICE_PREFIX}-$(echo "$1" | tr '.' '-' | tr '[:upper:]' '[:lower:]')"
+    local model="$1"
+    local port="${2:-}"
+    if [[ -n "$port" ]]; then
+        echo "${SERVICE_PREFIX}-$(echo "$model" | tr '.' '-' | tr '[:upper:]' '[:lower:]')-${port}"
+    else
+        echo "${SERVICE_PREFIX}-$(echo "$model" | tr '.' '-' | tr '[:upper:]' '[:lower:]')"
+    fi
+}
+
+# Find service file for a model name (with or without port)
+find_service() {
+    local name="$1"
+    # Try exact match first (name includes port)
+    local svc="${SERVICE_PREFIX}-$(echo "$name" | tr '.' '-' | tr '[:upper:]' '[:lower:]')"
+    if [[ -f "/etc/systemd/system/${svc}.service" ]]; then
+        echo "$svc"
+        return 0
+    fi
+    # Try matching by model name prefix (without port)
+    local matches=()
+    for unit in /etc/systemd/system/${SERVICE_PREFIX}-*.service; do
+        [[ -f "$unit" ]] || continue
+        local unit_name
+        unit_name=$(basename "$unit" .service)
+        if [[ "$unit_name" == "${svc}-"* ]]; then
+            matches+=("$unit_name")
+        fi
+    done
+    if [[ ${#matches[@]} -eq 1 ]]; then
+        echo "${matches[0]}"
+        return 0
+    elif [[ ${#matches[@]} -gt 1 ]]; then
+        err "Multiple services found for '$name':"
+        for m in "${matches[@]}"; do
+            err "  $m"
+        done
+        err "Specify the port too, e.g.: $name-8080"
+        return 1
+    fi
+    return 1
 }
 
 # Check if a port is already used by another roast service
@@ -183,7 +222,7 @@ cmd_add() {
     model_name=$(model_name_from_file "$filename")
     local model_path="$MODELS_DIR/$filename"
     local svc
-    svc=$(service_name "$model_name")
+    svc=$(service_name "$model_name" "$port")
 
     info "Model:   $model_name"
     info "File:    $model_path"
@@ -351,13 +390,7 @@ cmd_list() {
 cmd_enable() {
     local model_name="$1"
     local svc
-    svc=$(service_name "$model_name")
-
-    if [[ ! -f "/etc/systemd/system/${svc}.service" ]]; then
-        err "Service not found: $svc"
-        err "Use 'list' to see available models."
-        exit 1
-    fi
+    svc=$(find_service "$model_name") || exit 1
 
     log "Enabling and starting $svc..."
     systemctl enable --now "$svc"
@@ -367,12 +400,7 @@ cmd_enable() {
 cmd_disable() {
     local model_name="$1"
     local svc
-    svc=$(service_name "$model_name")
-
-    if [[ ! -f "/etc/systemd/system/${svc}.service" ]]; then
-        err "Service not found: $svc"
-        exit 1
-    fi
+    svc=$(find_service "$model_name") || exit 1
 
     log "Stopping and disabling $svc..."
     systemctl disable --now "$svc"
@@ -382,13 +410,8 @@ cmd_disable() {
 cmd_remove() {
     local model_name="$1"
     local svc
-    svc=$(service_name "$model_name")
+    svc=$(find_service "$model_name") || exit 1
     local unit_path="/etc/systemd/system/${svc}.service"
-
-    if [[ ! -f "$unit_path" ]]; then
-        err "Service not found: $svc"
-        exit 1
-    fi
 
     # Get model path before removing
     local model_file
@@ -416,14 +439,8 @@ cmd_config() {
     local model_name="$1"
     shift
     local svc
-    svc=$(service_name "$model_name")
+    svc=$(find_service "$model_name") || exit 1
     local unit_path="/etc/systemd/system/${svc}.service"
-
-    if [[ ! -f "$unit_path" ]]; then
-        err "Service not found: $svc"
-        err "Use 'list' to see available models."
-        exit 1
-    fi
 
     # Read current values from service file
     local cur_port cur_ngl cur_ctx cur_np cur_model
@@ -573,10 +590,10 @@ cmd_bench() {
     # Find the model file from an existing service or the models directory
     local model_path=""
     local svc
-    svc=$(service_name "$model_name")
+    svc=$(find_service "$model_name" 2>/dev/null || true)
     local unit_path="/etc/systemd/system/${svc}.service"
 
-    if [[ -f "$unit_path" ]]; then
+    if [[ -n "$svc" && -f "$unit_path" ]]; then
         model_path=$(grep -oP '\-m \K\S+' "$unit_path" 2>/dev/null || true)
     fi
 
