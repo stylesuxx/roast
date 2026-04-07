@@ -12,8 +12,7 @@
 #   sudo roast enable <model-name>
 #   sudo roast disable <model-name>
 #   sudo roast remove <model-name>
-#   sudo roast config <model-name> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--parallel NP]
-#   sudo roast status
+#   sudo roast config <model-name> [--port PORT] [--gpu-layers NGL] [--context-size CTX]#   sudo roast status
 #   sudo roast bench <model-name>
 #
 # Examples:
@@ -33,7 +32,7 @@ SERVICE_PREFIX="roast"
 DEFAULT_PORT=8080
 DEFAULT_NGL=99
 DEFAULT_CTX=16384
-DEFAULT_NP=1
+DEFAULT_NP=""
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -65,7 +64,7 @@ usage() {
     echo "  --port PORT          Port for llama-server (default: $DEFAULT_PORT)"
     echo "  --gpu-layers NGL     Number of GPU layers (default: $DEFAULT_NGL, use 0 for CPU only)"
     echo "  --context-size CTX   Context size (default: $DEFAULT_CTX)"
-    echo "  --parallel NP        Number of parallel request slots (default: $DEFAULT_NP)"
+    echo "  --parallel NP        Number of parallel request slots (default: auto)"
     echo "  --enable             Enable and start the service immediately (add only)"
     echo ""
     echo "Model name is the GGUF filename without extension."
@@ -248,9 +247,12 @@ cmd_add() {
     log "Creating systemd service: $svc"
 
     # Build ExecStart command
-    local exec_cmd="$LLAMA_SERVER -m $model_path --host 0.0.0.0 --port $port -c $ctx -np $np --jinja"
+    local exec_cmd="$LLAMA_SERVER -m $model_path --host 0.0.0.0 --port $port -c $ctx --jinja"
     if [[ -n "$ngl" ]]; then
         exec_cmd="$exec_cmd -ngl $ngl"
+    fi
+    if [[ -n "$np" ]]; then
+        exec_cmd="$exec_cmd -np $np"
     fi
 
     # Check if the patched radv is needed (Coreforge method)
@@ -299,8 +301,8 @@ cmd_list() {
     echo ""
 
     local found=false
-    printf "%-40s %-8s %-10s %s\n" "MODEL" "PORT" "STATUS" "SERVICE"
-    printf "%-40s %-8s %-10s %s\n" "-----" "----" "------" "-------"
+    printf "%-40s %-6s %-6s %-5s %-4s %-10s %s\n" "MODEL" "PORT" "CTX" "NGL" "NP" "STATUS" "SERVICE"
+    printf "%-40s %-6s %-6s %-5s %-4s %-10s %s\n" "-----" "----" "---" "---" "--" "------" "-------"
 
     for unit in /etc/systemd/system/${SERVICE_PREFIX}-*.service; do
         [[ -f "$unit" ]] || continue
@@ -310,6 +312,15 @@ cmd_list() {
         svc=$(basename "$unit" .service)
         local port
         port=$(grep -oP '\-\-port \K\d+' "$unit" 2>/dev/null || echo "?")
+        local ctx
+        ctx=$(grep -oP '\-c \K\d+' "$unit" 2>/dev/null || echo "?")
+        if [[ "$ctx" =~ ^[0-9]+$ ]]; then
+            ctx="$((ctx / 1024))K"
+        fi
+        local ngl
+        ngl=$(grep -oP '\-ngl \K\d+' "$unit" 2>/dev/null || echo "-")
+        local np
+        np=$(grep -oP '\-np \K\d+' "$unit" 2>/dev/null || echo "-")
         local model_file
         model_file=$(grep -oP '\-m \K\S+' "$unit" 2>/dev/null || echo "?")
         local model_name
@@ -327,7 +338,7 @@ cmd_list() {
             status_display="stopped"
         fi
 
-        printf "%-40s %-8s " "$model_name" "$port"
+        printf "%-40s %-6s %-6s %-5s %-4s " "$model_name" "$port" "$ctx" "$ngl" "$np"
         echo -en "$status_display"
         printf "%*s %s\n" $((10 - ${#status})) "" "$svc"
     done
@@ -451,9 +462,12 @@ cmd_config() {
     fi
 
     # Rebuild ExecStart
-    local exec_cmd="$LLAMA_SERVER -m $cur_model --host 0.0.0.0 --port $port -c $ctx -np $np"
+    local exec_cmd="$LLAMA_SERVER -m $cur_model --host 0.0.0.0 --port $port -c $ctx --jinja"
     if [[ -n "$ngl" ]]; then
         exec_cmd="$exec_cmd -ngl $ngl"
+    fi
+    if [[ -n "$np" ]]; then
+        exec_cmd="$exec_cmd -np $np"
     fi
 
     # Rebuild env lines
@@ -486,7 +500,7 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    log "Updated $svc: port=$port, context=$ctx, ngl=${ngl:-auto}, parallel=$np"
+    log "Updated $svc: port=$port, context=$ctx, ngl=${ngl:-auto}${np:+, parallel=$np}"
 
     # Restart if running
     if systemctl is-active --quiet "$svc" 2>/dev/null; then

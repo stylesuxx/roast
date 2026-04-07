@@ -181,6 +181,8 @@ Once R.O.A.S.T. is running, you have an OpenAI-compatible API at `http://<hostna
         --model openai/qwen2.5-coder-7b-instruct-q4_k_m.gguf --no-auto-commits
   ```
 
+- **[OpenCode](https://github.com/opencode-ai/opencode)** - Terminal-based AI coding agent with file editing, search, and shell command tools. Requires a model with native tool calling support and 32K+ context. Works best with 16GB+ VRAM (e.g. Qwen 2.5 14B Instruct). See the [OpenCode docs](https://opencode.ai/docs/providers/) for OpenAI-compatible provider configuration.
+
 - **[Continue](https://continue.dev)** - VS Code / JetBrains extension for code completion and chat. Point it at your local API for a self-hosted Copilot alternative.
 
 - **[Open Interpreter](https://github.com/OpenInterpreter/open-interpreter)** - CLI agent that can run code, manage files, and control your computer via natural language.
