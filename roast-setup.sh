@@ -480,7 +480,7 @@ if command -v huggingface-cli &>/dev/null; then
     log "huggingface-cli already installed."
 else
     log "Installing huggingface-cli..."
-    curl -fsSL https://huggingface.co/install.sh | sh
+    curl -LsSf https://hf.co/cli/install.sh | bash
     log "huggingface-cli installed."
 fi
 
