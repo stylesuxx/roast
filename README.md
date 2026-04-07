@@ -88,14 +88,14 @@ The `roast` CLI is installed globally by the setup script.
 ### Add a model
 
 ```bash
-sudo roast add https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf --port 8080 --enable
+sudo roast add Qwen/Qwen2.5-7B-Instruct-GGUF qwen2.5-7b-instruct-q4_k_m.gguf --port 8080 --enable
 ```
 
 ### Multiple models on different ports
 
 ```bash
-sudo roast add <url-to-mistral.gguf> --port 8080 --enable
-sudo roast add <url-to-codellama.gguf> --port 8081 --enable
+sudo roast add TheBloke/Mistral-7B-GGUF mistral-7b.Q4_K_M.gguf --port 8080 --enable
+sudo roast add TheBloke/Codellama-7B-GGUF codellama-7b.Q4_K_M.gguf --port 8081 --enable
 ```
 
 ### Manage models

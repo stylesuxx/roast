@@ -7,16 +7,16 @@
 # systemd services for llama-server instances.
 #
 # Usage:
-#   sudo roast add <hf-url> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--parallel NP] [--enable]
-#   sudo roast list
-#   sudo roast enable <model-name>
-#   sudo roast disable <model-name>
-#   sudo roast remove <model-name>
-#   sudo roast config <model-name> [--port PORT] [--gpu-layers NGL] [--context-size CTX]#   sudo roast status
-#   sudo roast bench <model-name>
-#
-# Examples:
-#   sudo roast add https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/resolve/main/mistral-7b-v0.1.Q4_K_M.gguf --port 8080 --gpu-layers 99 --context-size 32768 --enable
+ #   sudo roast add <repo-id> <filename> [--port PORT] [--gpu-layers NGL] [--context-size CTX] [--parallel NP] [--enable]
+ #   sudo roast list
+ #   sudo roast enable <model-name>
+ #   sudo roast disable <model-name>
+ #   sudo roast remove <model-name>
+ #   sudo roast config <model-name> [--port PORT] [--gpu-layers NGL] [--context-size CTX]#   sudo roast status
+ #   sudo roast bench <model-name>
+ #
+ # Examples:
+ #   sudo roast add TheBloke/Mistral-7B-v0.1-GGUF mistral-7b-v0.1.Q4_K_M.gguf --port 8080 --gpu-layers 99 --context-size 32768 --enable
 #   sudo roast list
 #   sudo roast disable mistral-7b-v0.1.Q4_K_M-8080
 
@@ -178,12 +178,16 @@ validate_gguf() {
 # --- Commands ---
 
 cmd_add() {
-    local url=""
     local port="$DEFAULT_PORT"
     local ngl="$DEFAULT_NGL"
     local ctx="$DEFAULT_CTX"
     local np="$DEFAULT_NP"
     local enable_after=false
+
+    # Get repo_id and filename as first two arguments
+    local repo_id="$1"
+    local filename="$2"
+    shift 2
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -193,33 +197,21 @@ cmd_add() {
             --parallel)   np="$2"; shift 2 ;;
             --enable) enable_after=true; shift ;;
             -*)      err "Unknown option: $1"; usage ;;
-            *)
-                if [[ -z "$url" ]]; then
-                    url="$1"
-                else
-                    err "Unexpected argument: $1"
-                    usage
-                fi
-                shift
-                ;;
+            *)       err "Unexpected argument: $1"; usage ;;
         esac
     done
 
-    if [[ -z "$url" ]]; then
-        err "No URL provided."
+    if [[ -z "$repo_id" || -z "$filename" ]]; then
+        err "No repo_id or filename provided."
         usage
     fi
 
-    # Validate URL looks like a HuggingFace GGUF link
-    if [[ "$url" != *".gguf"* ]]; then
-        warn "URL does not end in .gguf - are you sure this is a GGUF model?"
+    # Validate filename looks like a GGUF file
+    if [[ "$filename" != *.gguf* ]]; then
+        warn "Filename does not end in .gguf - are you sure this is a GGUF model?"
         read -rp "Continue? [y/N] " ans
         [[ "$ans" =~ ^[Yy]$ ]] || exit 1
     fi
-
-    # Extract filename from URL
-    local filename
-    filename=$(basename "$url" | sed 's/?.*//')
     local model_name
     model_name=$(model_name_from_file "$filename")
     local model_path="$MODELS_DIR/$filename"
@@ -248,15 +240,9 @@ cmd_add() {
     else
         log "Downloading model..."
 
-        # Download with wget (available on RPi OS) or fall back to curl
-        if command -v wget &>/dev/null; then
-            wget --progress=bar:force -O "$model_path" "$url"
-        elif command -v curl &>/dev/null; then
-            curl -fL --progress-bar -o "$model_path" "$url"
-        else
-            err "Neither wget nor curl found. Install one and try again."
-            exit 1
-        fi
+        # Download using huggingface-cli
+        log "Using huggingface-cli..."
+        huggingface-cli download "$repo_id" "$filename" --local-dir "$MODELS_DIR"
 
         if [[ ! -f "$model_path" || ! -s "$model_path" ]]; then
             err "Download failed or file is empty."

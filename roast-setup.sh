@@ -473,9 +473,21 @@ else
 fi
 
 # =====================================================================
-# Step 9: Open WebUI (optional)
+# Step 9: Install huggingface-cli
 # =====================================================================
-step "Step 9: Open WebUI setup (optional)"
+step "Step 9: Install huggingface-cli"
+if command -v huggingface-cli &>/dev/null; then
+    log "huggingface-cli already installed."
+else
+    log "Installing huggingface-cli..."
+    curl -fsSL https://hf.co/install.sh | sh
+    log "huggingface-cli installed."
+fi
+
+# =====================================================================
+# Step 10: Open WebUI (optional)
+# =====================================================================
+step "Step 10: Open WebUI setup (optional)"
 
 ask "Install Open WebUI via Docker? [y/N] " ans
 if [[ "$ans" =~ ^[Yy]$ ]]; then
@@ -536,25 +548,27 @@ echo "    6) Skip - I'll add one later"
 echo ""
 
 MODEL_URLS=(
-    "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf"
-    "https://huggingface.co/TheBloke/deepseek-coder-6.7B-instruct-GGUF/resolve/main/deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
-    "https://huggingface.co/QuantFactory/starcoder2-7b-instruct-GGUF/resolve/main/starcoder2-7b-instruct.Q4_K_M.gguf"
-    "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
-    "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF/resolve/main/NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf"
+    "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+    "TheBloke/deepseek-coder-6.7B-instruct-GGUF:deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
+    "QuantFactory/starcoder2-7b-instruct-GGUF:starcoder2-7b-instruct.Q4_K_M.gguf"
+    "unsloth/Qwen3.5-4B-GGUF:Qwen3.5-4B-Q4_K_M.gguf"
+    "nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF:NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf"
 )
 
 ask "Choose [1-6]: " model_choice
 case "$model_choice" in
     [1-5])
-        MODEL_URL="${MODEL_URLS[$((model_choice - 1))]}"
+        MODEL_ENTRY="${MODEL_URLS[$((model_choice - 1))]}"
+        repo_id=$(echo "$MODEL_ENTRY" | cut -d':' -f1)
+        filename=$(echo "$MODEL_ENTRY" | cut -d':' -f2)
         log "Installing model..."
-        "$ROAST_BIN" add "$MODEL_URL" --port 8080 --enable
+        "$ROAST_BIN" add "$repo_id" "$filename" --port 8080 --enable
         ;;
     *)
         log "Skipping model install."
         echo ""
         echo "Add one later with:"
-        echo "  sudo roast add <huggingface-gguf-url> --port 8080 --enable"
+        echo "  sudo roast add <repo_id> <filename> --port 8080 --enable"
         ;;
 esac
 
