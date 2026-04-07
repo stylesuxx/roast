@@ -521,17 +521,18 @@ echo ""
 # --- Optional: install a starter model ---
 echo "Would you like to install a model? (Q4_K_M quantization, ~4-5 GB)"
 echo ""
-echo "  Coding (best code quality, use with aider):"
+echo "  Coding assistants (use with aider):"
 echo "    1) Qwen 2.5 Coder 7B          - Alibaba, strong all-rounder"
+echo ""
+echo "  Code completion (use with Continue, Copilot alternatives):"
 echo "    2) DeepSeek Coder 6.7B         - DeepSeek, dedicated code model"
 echo "    3) StarCoder2 7B               - BigCode, 600+ languages"
 echo ""
 echo "  Tool calling (use with OpenCode, Open WebUI):"
 echo "    4) Qwen 3.5 4B                 - Alibaba, best-in-class tool calling (3.4 GB)"
-echo "    5) Llama 3.3 8B Instruct       - Meta, good balance"
-echo "    6) Mistral 7B Instruct v0.3    - Mistral AI, fast inference"
+echo "    5) Nemotron Nano 4B             - NVIDIA, 95% tool calling score (2.8 GB)"
 echo ""
-echo "    7) Skip - I'll add one later"
+echo "    6) Skip - I'll add one later"
 echo ""
 
 MODEL_URLS=(
@@ -539,13 +540,12 @@ MODEL_URLS=(
     "https://huggingface.co/TheBloke/deepseek-coder-6.7B-instruct-GGUF/resolve/main/deepseek-coder-6.7b-instruct.Q4_K_M.gguf"
     "https://huggingface.co/QuantFactory/starcoder2-7b-instruct-GGUF/resolve/main/starcoder2-7b-instruct.Q4_K_M.gguf"
     "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
-    "https://huggingface.co/bartowski/Meta-Llama-3.3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.3-8B-Instruct-Q4_K_M.gguf"
-    "https://huggingface.co/MistralAI/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/mistral-7b-instruct-v0.3-q4_k_m.gguf"
+    "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF/resolve/main/NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf"
 )
 
-ask "Choose [1-7]: " model_choice
+ask "Choose [1-6]: " model_choice
 case "$model_choice" in
-    [1-6])
+    [1-5])
         MODEL_URL="${MODEL_URLS[$((model_choice - 1))]}"
         log "Installing model..."
         "$ROAST_BIN" add "$MODEL_URL" --port 8080 --enable
