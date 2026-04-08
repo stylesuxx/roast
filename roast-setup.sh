@@ -551,17 +551,31 @@ if [[ "$ans" =~ ^[Yy]$ ]]; then
         SEARXNG_DIR="/opt/searxng"
         mkdir -p "$SEARXNG_DIR"
 
-        cat > "$SEARXNG_DIR/settings.yml" <<SEARXEOF
-use_default_settings: true
-server:
-  secret_key: "$(openssl rand -hex 32)"
-search:
-  formats:
-    - html
-    - json
-SEARXEOF
+        SEARXNG_TOKEN=""
+        ask "Enable SearXNG authentication token? [y/N] " auth_ans
+        if [[ "$auth_ans" =~ ^[Yy]$ ]]; then
+            SEARXNG_TOKEN=$(openssl rand -hex 16)
+            log "SearXNG token: $SEARXNG_TOKEN"
+            echo "  Save this token - you'll need it for Open WebUI configuration."
+            echo ""
+        fi
 
-        # Disable rate limiting so Open WebUI doesn't get blocked
+        {
+            echo "use_default_settings: true"
+            echo "server:"
+            echo "  secret_key: \"$(openssl rand -hex 32)\""
+            if [[ -n "$SEARXNG_TOKEN" ]]; then
+                echo "  limiter: true"
+                echo "  tokens:"
+                echo "    - $SEARXNG_TOKEN"
+            fi
+            echo "search:"
+            echo "  formats:"
+            echo "    - html"
+            echo "    - json"
+        } > "$SEARXNG_DIR/settings.yml"
+
+        # Disable IP-based rate limiting so Open WebUI doesn't get blocked
         cat > "$SEARXNG_DIR/limiter.toml" <<LIMITEREOF
 [botdetection.ip_limit]
 link_token = false
