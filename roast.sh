@@ -273,43 +273,9 @@ cmd_add() {
     local unit_path="/etc/systemd/system/${svc}.service"
     log "Creating systemd service: $svc"
 
-    # Build ExecStart command
-    local exec_cmd="$LLAMA_SERVER -m $model_path --host 0.0.0.0 --port $port -c $ctx --jinja"
-    if [[ -n "$ngl" ]]; then
-        exec_cmd="$exec_cmd -ngl $ngl"
-    fi
-    if [[ -n "$np" ]]; then
-        exec_cmd="$exec_cmd -np $np"
-    fi
-
-    # Check if the patched radv is needed (Coreforge method)
-    local env_lines="Environment=HOME=/home/$REAL_USER"
-    if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
-        env_lines="$env_lines
-Environment=LD_PRELOAD=/usr/local/lib/memcpy.so
-Environment=VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json"
-    fi
-
-    cat > "$unit_path" <<EOF
-[Unit]
-Description=R.O.A.S.T. llama-server - ${model_name}
-After=network.target
-ConditionPathExists=/dev/dri/renderD128
-StartLimitIntervalSec=120
-StartLimitBurst=5
-
-[Service]
-Type=simple
-User=$REAL_USER
-ExecStartPre=/bin/sleep 10
-ExecStart=$exec_cmd
-Restart=on-failure
-RestartSec=5
-$env_lines
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    # Source template and generate service file
+    source /opt/roast/templates/roast-service.sh
+    generate_service "$svc" "$model_name" "$model_path" "$port" "$ctx" "$ngl" "$np" "$needs_patched_radv"
 
     systemctl daemon-reload
     log "Service created: $unit_path"
@@ -466,43 +432,9 @@ cmd_config() {
         fi
     fi
 
-    # Rebuild ExecStart
-    local exec_cmd="$LLAMA_SERVER -m $cur_model --host 0.0.0.0 --port $port -c $ctx --jinja"
-    if [[ -n "$ngl" ]]; then
-        exec_cmd="$exec_cmd -ngl $ngl"
-    fi
-    if [[ -n "$np" ]]; then
-        exec_cmd="$exec_cmd -np $np"
-    fi
-
-    # Rebuild env lines
-    local env_lines="Environment=HOME=/home/$REAL_USER"
-    if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
-        env_lines="$env_lines
-Environment=LD_PRELOAD=/usr/local/lib/memcpy.so
-Environment=VK_ICD_FILENAMES=/usr/local/share/vulkan/icd.d/radeon_fixed_icd.json"
-    fi
-
-    cat > "$unit_path" <<EOF
-[Unit]
-Description=R.O.A.S.T. llama-server - ${model_name}
-After=network.target
-ConditionPathExists=/dev/dri/renderD128
-StartLimitIntervalSec=120
-StartLimitBurst=5
-
-[Service]
-Type=simple
-User=$REAL_USER
-ExecStartPre=/bin/sleep 10
-ExecStart=$exec_cmd
-Restart=on-failure
-RestartSec=5
-$env_lines
-
-[Install]
-WantedBy=multi-user.target
-EOF
+    # Source template and generate service file
+    source /opt/roast/templates/roast-service.sh
+    generate_service "$svc" "$model_name" "$cur_model" "$port" "$cur_ctx" "$cur_ngl" "$cur_np" "$needs_patched_radv"
 
     systemctl daemon-reload
     log "Updated $svc: port=$port, context=$ctx, ngl=${ngl:-auto}${np:+, parallel=$np}"
