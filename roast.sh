@@ -432,9 +432,15 @@ cmd_config() {
         fi
     fi
 
+    # Check if patched radv is needed
+    local needs_patched_radv="false"
+    if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
+        needs_patched_radv="true"
+    fi
+
     # Source template and generate service file
     source /opt/roast/templates/roast-service.sh
-    generate_service "$svc" "$model_name" "$cur_model" "$port" "$cur_ctx" "$cur_ngl" "$cur_np" "$needs_patched_radv"
+    generate_service "$svc" "$model_name" "$cur_model" "$port" "$ctx" "$ngl" "$np" "$needs_patched_radv"
 
     systemctl daemon-reload
     log "Updated $svc: port=$port, context=$ctx, ngl=${ngl:-auto}${np:+, parallel=$np}"

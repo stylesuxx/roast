@@ -62,18 +62,21 @@ The Pi 5 has a single PCIe x1 Gen 3 slot (~1 GB/s). This limits model load time 
 
 **What matters most:**
 - **VRAM** - determines max model size and context window
-- **Compute speed** - faster GPU = faster tok/s
+- **Memory bus width** - determines text generation (tg) speed. This is the bottleneck for interactive chat. Wider = faster token output.
+- **Compute speed** - determines prompt processing (pp) speed. Faster GPU = faster context ingestion.
 - **amdgpu driver support** - GCN 5 / Polaris and newer
 
-| GPU | VRAM | Gen | What you can run |
-|-----|------|-----|------------------|
-| RX 5600 XT | 6 GB | RDNA1 | 7B Q4, ~8K context |
-| RX 6600 | 8 GB | RDNA2 | 7B Q4, ~32K context |
-| RX 6700 XT | 12 GB | RDNA2 | 13B Q4 or 7B Q8, large context |
-| RX 7600 | 8 GB | RDNA3 | 7B Q4, faster compute than RDNA2 |
-| RX 7700 XT | 12 GB | RDNA3 | Best balance of speed + VRAM |
-| RX 6800 | 16 GB | RDNA2 | 30B Q4 or 13B Q8 |
-| RX 9060 XT | 16 GB | RDNA4 | 30B Q4 or 13B Q8, fastest compute (default method only, `--coreforge` not yet supported) |
+**Important:** Text generation is memory-bandwidth limited, not compute limited. A GPU with a wider memory bus (e.g. 192-bit or 256-bit) will generate tokens faster than a GPU with a narrower bus (128-bit), even if the narrower bus GPU has more raw compute power. For example, the RX 5600 XT (192-bit) generates tokens ~50% faster than the RX 9060 XT (128-bit) despite being much slower at prompt processing.
+
+| GPU | VRAM | Bus | Gen | tg speed | Best for |
+|-----|------|-----|-----|----------|----------|
+| RX 5600 XT | 6 GB | 192-bit | RDNA1 | ~47 tok/s | Budget, fast tg, small models |
+| RX 6600 | 8 GB | 128-bit | RDNA2 | ~32 tok/s | More VRAM, slower tg |
+| RX 6700 XT | 12 GB | 192-bit | RDNA2 | ~47 tok/s | Great balance of VRAM + tg |
+| RX 6800 | 16 GB | 256-bit | RDNA2 | ~60 tok/s | Best tg + most VRAM |
+| RX 7600 | 8 GB | 128-bit | RDNA3 | ~35 tok/s | Faster compute, slower tg |
+| RX 7700 XT | 12 GB | 192-bit | RDNA3 | ~50 tok/s | Good balance |
+| RX 9060 XT | 16 GB | 128-bit | RDNA4 | ~32 tok/s | Fastest pp (2400 tok/s), 16 GB VRAM, slow tg (default method only, `--coreforge` not yet supported) |
 
 ## Requirements
 
@@ -171,6 +174,7 @@ sudo roast bench <model-name>
 - Do **not** install `linux-image-arm64` (Debian generic kernel) - Pi 5 will not boot
 - Do **not** enable armhf multiarch - 16K page kernel breaks 32-bit ARM libs
 - AMD Ubuntu repos are x86_64 only - not useful on Pi 5
+- SearXNG (if installed) has **no authentication** by default - it's accessible to anyone on your network. Only run it on a trusted local network, or add firewall rules to restrict access.
 
 ## GPU Monitoring
 
