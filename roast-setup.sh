@@ -38,6 +38,7 @@ LLAMA_DIR="/opt/llama.cpp"
 LLAMA_MODELS_DIR="/opt/llama.cpp/models"
 BUILD_JOBS=$(nproc)
 OPEN_WEBUI_PORT=3000
+SEARXNG_PORT=3001
 REAL_USER="${SUDO_USER:-$USER}"
 
 # --- Colors ---
@@ -47,12 +48,30 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# --- Helper functions ---
 log()  { echo -e "${GREEN}[+]${NC} $*"; }
 warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 err()  { echo -e "${RED}[x]${NC} $*" >&2; }
 step() { echo -e "\n${BOLD}=== $* ===${NC}"; }
 # Read from terminal even when script is piped via stdin
 ask()  { read -rp "$1" "$2" </dev/tty; }
+
+install_docker() {
+    if command -v docker &>/dev/null; then
+        log "Docker is already installed."
+    elif command -v apt-get &>/dev/null; then
+        log "Installing Docker..."
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sh get-docker.sh
+        rm get-docker.sh
+        log "Adding user to docker group..."
+        usermod -aG docker "$REAL_USER"
+        log "Docker installed."
+    else
+        err "Cannot determine how to install Docker."
+        exit 1
+    fi
+}
 
 # --- Preflight checks ---
 if [[ $EUID -ne 0 ]]; then
@@ -491,12 +510,7 @@ step "Step 10: Open WebUI setup (optional)"
 
 ask "Install Open WebUI via Docker? [y/N] " ans
 if [[ "$ans" =~ ^[Yy]$ ]]; then
-    if ! command -v docker &>/dev/null; then
-        log "Installing Docker..."
-        curl -fsSL https://get.docker.com | sh
-        usermod -aG docker "$REAL_USER"
-        log "Docker installed."
-    fi
+    install_docker
 
     if docker ps -a --format '{{.Names}}' | grep -q '^open-webui$'; then
         log "Open WebUI container already exists."
@@ -519,6 +533,58 @@ if [[ "$ans" =~ ^[Yy]$ ]]; then
     fi
 else
     log "Skipping Open WebUI."
+fi
+
+# =====================================================================
+# Step 11: SearXNG (optional)
+# =====================================================================
+step "Step 11: SearXNG setup (optional)"
+
+ask "Install SearXNG via Docker? [y/N] " ans
+if [[ "$ans" =~ ^[Yy]$ ]]; then
+    install_docker
+
+    if docker ps -a --format '{{.Names}}' | grep -q '^searxng$'; then
+        log "SearXNG container already exists."
+    else
+        # Create settings.yml to enable JSON API (required for Open WebUI)
+        SEARXNG_DIR="/opt/searxng"
+        mkdir -p "$SEARXNG_DIR"
+
+        cat > "$SEARXNG_DIR/settings.yml" <<SEARXEOF
+use_default_settings: true
+server:
+  secret_key: "$(openssl rand -hex 32)"
+search:
+  formats:
+    - html
+    - json
+SEARXEOF
+
+        # Disable rate limiting so Open WebUI doesn't get blocked
+        cat > "$SEARXNG_DIR/limiter.toml" <<LIMITEREOF
+[botdetection.ip_limit]
+link_token = false
+LIMITEREOF
+
+        log "SearXNG settings created at $SEARXNG_DIR/settings.yml"
+
+        log "Starting SearXNG container..."
+        docker run -d -p "$SEARXNG_PORT":8080 \
+            -v "$SEARXNG_DIR:/etc/searxng:rw" \
+            --name searxng \
+            --restart always \
+            searxng/searxng:latest
+        log "SearXNG running at http://$(hostname).local:$SEARXNG_PORT"
+        echo ""
+        echo "  Search: http://$(hostname).local:$SEARXNG_PORT"
+        echo ""
+        echo "  To connect to Open WebUI:"
+        echo "    Admin Settings > Web Search > Provider: searxng"
+        echo "    Query URL: http://host.docker.internal:$SEARXNG_PORT/search?q=<query>"
+    fi
+else
+    log "Skipping SearXNG."
 fi
 
 # =====================================================================
