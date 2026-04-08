@@ -56,6 +56,10 @@ generate_service() {
     local np="$7"
     local needs_patched_radv="$8"
 
+    # Set globals used by exec_cmd()
+    GPU_LAYERS="${ngl:-}"
+    PARALLEL="${np:-}"
+
     # Build ExecStart command
     local exec_cmd
     exec_cmd=$(exec_cmd "$model_path" "$port" "$ctx")
