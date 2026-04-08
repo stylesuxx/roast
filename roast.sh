@@ -108,10 +108,20 @@ service_name() {
     fi
 }
 
-# Find service file for a model name (with or without port)
+# Find service file for a model name, port suffix, or full service name
 find_service() {
     local name="$1"
-    # Try exact match first (name includes port)
+
+    # If already a full service name (starts with roast-), try it directly
+    if [[ "$name" == "${SERVICE_PREFIX}-"* ]]; then
+        local direct="$(echo "$name" | tr '.' '-' | tr '[:upper:]' '[:lower:]')"
+        if [[ -f "/etc/systemd/system/${direct}.service" ]]; then
+            echo "$direct"
+            return 0
+        fi
+    fi
+
+    # Try exact match (name includes port)
     local svc="${SERVICE_PREFIX}-$(echo "$name" | tr '.' '-' | tr '[:upper:]' '[:lower:]')"
     if [[ -f "/etc/systemd/system/${svc}.service" ]]; then
         echo "$svc"
