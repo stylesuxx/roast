@@ -283,6 +283,12 @@ cmd_add() {
     local unit_path="/etc/systemd/system/${svc}.service"
     log "Creating systemd service: $svc"
 
+    # Check if patched radv is needed (Coreforge method)
+    local needs_patched_radv="false"
+    if grep -qxF "needs-patched-radv" /var/lib/roast-setup-state 2>/dev/null; then
+        needs_patched_radv="true"
+    fi
+
     # Source template and generate service file
     source /opt/roast/templates/roast-service.sh
     generate_service "$svc" "$model_name" "$model_path" "$port" "$ctx" "$ngl" "$np" "$needs_patched_radv"
