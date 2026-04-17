@@ -561,7 +561,9 @@ cmd_bench() {
         [[ -n "$svc_ngl" ]] && bench_ngl="$svc_ngl"
         local svc_ctx
         svc_ctx=$(grep -oP '\-c \K\d+' "$unit_path" 2>/dev/null || true)
-        [[ -n "$svc_ctx" ]] && bench_ctx="$svc_ctx"
+        if [[ -n "$svc_ctx" && "$svc_ctx" =~ ^[0-9]+$ ]]; then
+            bench_ctx="$svc_ctx"
+        fi
     fi
 
     log "Benchmarking: $model_name"
